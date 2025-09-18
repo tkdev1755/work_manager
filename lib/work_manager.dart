@@ -263,37 +263,45 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
   bool hasSelectedApplication = false;
   if (!metadata.containsKey("applications")) metadata["applications"] = {};
   Map<String,dynamic> applications = metadata["applications"];
-  List applicationsValues = applications.values.toList();
+  List applicationsValues = applications.entries.toList();
   int selectedIndex = 0;
   int index = 0;
   int listLength = applicationsValues.length;
   while (!hasSelectedApplication){
     for (MapEntry<String,dynamic> application in applicationsValues){
-      if (selectedIndex == index){
+      index++;
+      if ((selectedIndex+1) == index){
         console.setBackgroundColor(ConsoleColor.magenta);
-        console.writeLine("> ${application.value["name"]}");
-        console.writeLine();
+        console.writeLine(">${application.value["name"]}");
         console.resetColorAttributes();
+        console.writeLine();
       }
       else{
         console.writeLine(" ${application.value["name"]}");
         console.writeLine();
       }
-      index++;
     }
     Key resultKey  = console.readKey();
     if (resultKey.isControl){
       switch (resultKey.controlChar){
         case ControlCharacter.arrowUp:
           selectedIndex = (selectedIndex -1) % listLength;
+          index = 0;
+          console.clearScreen();
           break;
         case ControlCharacter.arrowDown:
+          print("ARROW DOWN");
           selectedIndex = (selectedIndex +1) % listLength;
+          index = 0;
+          console.clearScreen();
           break;
         case ControlCharacter.enter:
           loadApplication(metadata, selectedApplication, applicationsValues[selectedIndex].key);
+          index = 0;
           return 0;
           break;
+        case ControlCharacter.ctrlC:
+          return 0;
         default:
           break;
       }
