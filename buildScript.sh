@@ -1,28 +1,29 @@
 #!/bin/bash
-
-OS=$1
-ARCH=$2
+VERSION=$1
+OS=$2
+ARCH=$3
 # Nom de l'archive de sortie
-
 dart compile exe bin/work_manager.dart
 cp bin/work_manager.exe bin/work_manager
 
+mkdir -p releases/"$VERSION"/"${OS}_$ARCH"/
+# shellcheck disable=SC2086
+cp bin/work_manager releases/$VERSION/"${OS}_$ARCH"/
+# shellcheck disable=SC2086
+cp buildAssets/install.sh releases/$VERSION/"${OS}_$ARCH"/
 OUTPUT="workManager_${OS}_${ARCH}.zip"
 
-# Fichiers à inclure
-FILES=("bin/work_manager" "buildAssets/install.sh")
-
-# Vérification que les fichiers existent
-for FILE in "${FILES[@]}"; do
-    if [[ ! -f "$FILE" ]]; then
-        echo "Erreur : le fichier $FILE n'existe pas."
-        exit 1
-    fi
-done
 
 # Création de l'archive ZIP
+cd releases/"$VERSION"/"${OS}_$ARCH" || exit
+if [[ "$PLATFORM" = "windows" ]]; then
+    powershell.exe -Command "Compress-Archive -Path * -DestinationPath $OUTPUT -Force"
+	echo "Zipped the archive correctly"
+	ls
+else
+	zip -r "$OUTPUT" .
+fi
 
-zip "$OUTPUT" "${FILES[@]}"
 
 # Message de confirmation
 if [[ $? -eq 0 ]]; then
