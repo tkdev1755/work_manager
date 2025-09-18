@@ -3,6 +3,10 @@
 OS=$1
 ARCH=$2
 # Nom de l'archive de sortie
+
+dart compile exe bin/work_manager.dart
+cp bin/work_manager.exe bin/work_manager
+
 OUTPUT="workManager_${OS}_${ARCH}.zip"
 
 # Fichiers à inclure
@@ -17,6 +21,7 @@ for FILE in "${FILES[@]}"; do
 done
 
 # Création de l'archive ZIP
+
 zip "$OUTPUT" "${FILES[@]}"
 
 # Message de confirmation
