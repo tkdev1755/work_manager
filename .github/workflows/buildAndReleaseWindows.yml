@@ -1,0 +1,70 @@
+name: Build & Release (Windows)
+permissions:
+  contents: write
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Permet de le lancer à la main
+
+jobs:
+  build:
+    if: "contains(github.event.head_commit.message, '[RELEASE]') || github.event_name == 'workflow_dispatch'"
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dart
+        uses: dart-lang/setup-dart@v1
+      
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+          
+      - name: Extract version from pubspec.yaml
+        id: get_version
+        shell: bash
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | cut -d ' ' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Make script executable
+        run: bash -c "chmod +x ./buildScript.sh"
+
+      - name: Run build script
+        run: bash -c "./buildScript.sh '${{ steps.get_version.outputs.version }}' 'windows' 'x64'"
+        
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x86
+          path: releases/${{ steps.get_version.outputs.version }}/windows_x64/*.zip
+
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./release_files
+
+      - name: Create GitHub draft release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.build.outputs.version }}
+          name: v${{ needs.build.outputs.version }}
+          draft: true
+          allow_updates: true
+          files: ./release_files/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
