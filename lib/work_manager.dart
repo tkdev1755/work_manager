@@ -91,7 +91,7 @@ Map<String,dynamic> loadMetdataFile(){
 }
 
 MapEntry<String,dynamic>? getLoadedApplication(Map<String,dynamic> metadata){
-  if (metadata.containsKey("loadedApplication") && metadata["loadedApplication"].containsKey("lastOpened")){
+  if (metadata.containsKey("loadedApplication") && metadata["loadedApplication"].containsKey("lastOpened") && metadata["loadedApplication"].containsKey("id")){
     Map<String,dynamic> loadedApplicationInfo = metadata["loadedApplication"];
     DateTime lastOpened = dateFormat.parse(loadedApplicationInfo["lastOpened"]);
     if (DateTime.now().difference(lastOpened).inDays <= 2 && metadata["applications"].containsKey(loadedApplicationInfo["id"])){
@@ -233,6 +233,35 @@ String getTemplateExportFilename(YamlMap template, String name){
   return applicationTemplateName;
 }
 
+int deleteApplication(String applicationID, String applicationsDirectory,Map<String,dynamic> metadata){
+  Directory applicationDirectory = Directory("$applicationsDirectory$slash$applicationID");
+  if (!applicationDirectory.existsSync()){
+    print("Application directory doesn't seems to exist");
+    return -1;
+  }
+  try {
+    applicationDirectory.deleteSync(recursive: true);
+  }
+  on FileSystemException catch (e){
+    print("Unable to delete the folder because of the following error : ${e.osError} - ${e.message}");
+    return -1;
+  }
+  if (!metadata.containsKey("applications")){
+    print("No applications were created");
+    return -1;
+  }
+  if (!metadata["applications"].containsKey(applicationID)){
+    print("This application doesn't exist in the metadata file");
+    return -1;
+  }
+  if (metadata.containsKey("loadedApplication")){
+    if (metadata["loadedApplication"]?["id"] ==  applicationID){
+      metadata.remove("loadedApplication");
+    }
+  }
+  metadata["applications"].remove(applicationID);
+  return 0;
+}
 void main(List<String> arguments){
   const String loadCommand = "load";
   const String createCommand = "create";
@@ -257,7 +286,7 @@ void main(List<String> arguments){
       needsUpdate = false;
       exitCode = 0;
     case loadCommand:
-      exitCode = loadApplicationView(metadataFile, selectedApplication);
+      exitCode = loadApplicationView(metadataFile, selectedApplication,confFile);
       needsUpdate = exitCode == 0;
       break;
     case openCommand:
@@ -281,7 +310,7 @@ void main(List<String> arguments){
   exit(exitCode);
 }
 
-int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? selectedApplication){
+int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? selectedApplication, YamlMap config){
   bool hasSelectedApplication = false;
   if (!metadata.containsKey("applications")) metadata["applications"] = {};
   Map<String,dynamic> applications = metadata["applications"];
@@ -293,8 +322,8 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
     for (MapEntry<String,dynamic> application in applicationsValues){
       index++;
       if ((selectedIndex+1) == index){
-        console.setBackgroundColor(ConsoleColor.magenta);
-        console.writeLine(">${application.value["name"]}");
+        console.setBackgroundColor(ConsoleColor.blue);
+        console.writeLine(">${application.value["name"]} (Press r to delete)");
         console.resetColorAttributes();
         console.writeLine();
       }
@@ -327,8 +356,19 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
           break;
       }
     }
+    else{
+      switch (resultKey.char){
+        case "r":
+          print("Deleting application");
+          int status_code =  deleteApplication(applicationsValues[selectedIndex].key,getApplicationsPath(config),metadata);
+          return status_code;
+        default:
+          break;
+      }
+    }
   }
 }
+
 
 int loadApplication(Map<String,dynamic> metadata, MapEntry<String,dynamic>? selectedApplication, applicationID){
   logger(metadata);
@@ -459,7 +499,7 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
     return -1;
   }
   if (selectedApplication == null || !selectedApplication.value.containsKey("name")){
-    print("No applications loaded at the moment, please load one with the wmanager load <application name>");
+    print("No applications loaded at the moment, please load one with the command : \nwmanager load");
     return -1;
   }
   YamlMap templateInfo = getTemplateInfo(config, args);
