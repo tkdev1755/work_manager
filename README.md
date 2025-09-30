@@ -39,10 +39,9 @@ wmanager export
 ```
 ----
 ## **Installation**
-  
-- Either download a release or compile the project from scratch
-- run the install.sh script provided in the archive
-- Create your config file in your installation folder (~/work_manager/) by following the guide in the wiki
+- Either download a release or compile the project from scratch (see the wiki for Compiling the sources)
+- run the `install.sh` script provided in the archive from the github release (or in the buildAssets folder from the repo)
+- Create your config file in your installation folder (~/work_manager/) by following the example file in docs/exampleConf.yml
 ----
 
 ## **Configuration (conf.yml)**

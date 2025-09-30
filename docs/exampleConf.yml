@@ -1,0 +1,85 @@
+# ============================================================
+# Example configuration file for Work Manager (wmanager)
+# ============================================================
+# This file controls:
+# - Which templates to copy when creating a new application
+# - How those templates should be named in each application
+# - How to open and export each template
+# - Where applications are stored and where exports go
+#
+# Notes:
+# - Always use ABSOLUTE paths (do not use "~")
+# - Prefer trailing slashes for template paths
+# - Variables you can use:
+#     ${wname}              → the application name, sanitized for filenames
+#     ${self.<field>}       → reference another field in the same template
+#     ${<templateKey>.<field>} → reference a field from another template
+# ============================================================
+
+template_files:
+  # -----------------------------------------------------------------
+  # Example 1: Resume template (Typst)
+  # -----------------------------------------------------------------
+  resume:
+    # Original file to copy (must exist inside `path`)
+    name: "CV.typ"
+
+    # Absolute path to where the template file lives
+    path: "/Users/johnDoe/work_manager/templates/"
+
+    # Filename once copied into the application folder
+    # ${wname} will be replaced by the application name
+    output_name: "CV_${wname}.typ"
+
+    # Filename of the exported file (after running export_command)
+    export_name: "CV_${wname}.pdf"
+
+    # Shell command to export this template
+    # Use variable substitution to build paths
+    export_command: "typst compile ${self.path}/${self.output_name}"
+
+    # Shell command to open this template
+    # Can be your preferred editor or viewer
+    open_command: "open ${self.path}/${self.output_name}"
+
+  # -----------------------------------------------------------------
+  # Example 2: Cover letter template (Markdown → PDF with Pandoc)
+  # -----------------------------------------------------------------
+  cover_letter:
+    name: "letter.md"
+    path: "/Users/johnDoe/work_manager/templates/"
+    output_name: "Letter_${wname}.md"
+    export_name: "Letter_${wname}.pdf"
+    export_command: "pandoc ${self.path}/${self.output_name} -o ${self.path}/${self.export_name}"
+    open_command: "code ${self.path}/${self.output_name}"   # VS Code
+
+  # -----------------------------------------------------------------
+  # Example 3: Company logo (asset, not exported)
+  # -----------------------------------------------------------------
+  logo:
+    name: "company_logo.png"
+    path: "/Users/johnDoe/work_manager/templates/"
+    is_asset: true
+    # Assets are copied into each application folder
+    # but are ignored during the export phase.
+
+  # -----------------------------------------------------------------
+  # Example 4: Word template (converted to PDF with LibreOffice)
+  # -----------------------------------------------------------------
+  word_cv:
+    name: "CV_template.docx"
+    path: "/Users/johnDoe/work_manager/templates/"
+    output_name: "CV_${wname}.docx"
+    export_name: "CV_${wname}.pdf"
+    export_command: "libreoffice --headless --convert-to pdf --outdir ${self.path} ${self.path}/${self.output_name}"
+    open_command: "open ${self.path}/${self.output_name}"   # macOS Preview / Word
+
+# -------------------------------------------------------------------
+# Global paths configuration
+# -------------------------------------------------------------------
+paths:
+  # Folder where each new application will be created
+  applications_path: "/Users/johnDoe/work_manager/applications/"
+
+  # Folder where exported files will be copied
+  export_path: "/Users/johnDoe/work_manager/jobExport/"
