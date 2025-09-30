@@ -436,7 +436,7 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
 
     ProcessResult res = Process.runSync(args[0], args.sublist(1), workingDirectory: applicationPath);
     if (res.exitCode != 0){
-      print("THERE WAS AN ERROR WHILE EXPORTING THE TEMPLATE ${res.stderr}");
+      print("There was an error while exporting ${template.key}, details :\n${res.stderr}");
       return -1;
     }
     String templateExportFilename = getTemplateExportFilename(template.value, selectedApplication.value["name"]);
