@@ -37,8 +37,12 @@ wmanager open resume
 # exports all the files associated to an application to the dedicated export folder
 wmanager export
 ```
-
-
+----
+## **Installation**
+  
+- Either download a release or compile the project from scratch
+- run the install.sh script provided in the archive
+- 
 ----
 
 ## **Configuration (conf.yml)**
