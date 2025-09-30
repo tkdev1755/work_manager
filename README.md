@@ -42,7 +42,7 @@ wmanager export
   
 - Either download a release or compile the project from scratch
 - run the install.sh script provided in the archive
-- 
+- Create your config file in your installation folder (~/work_manager/) by following the guide in the wiki
 ----
 
 ## **Configuration (conf.yml)**
