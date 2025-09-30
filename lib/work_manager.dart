@@ -30,17 +30,32 @@ String slash = Platform.isWindows ? "\\":"/";
 bool DEBUG = bool.fromEnvironment('DEBUG', defaultValue: false);
 String debugConfFilePath = DEBUG ? String.fromEnvironment("confPath", defaultValue: "") : "";
 String debugDbFilePath = DEBUG ? String.fromEnvironment("dbPath", defaultValue: "") : "";
-String confFilePath = DEBUG ? debugConfFilePath: "${Platform.resolvedExecutable}${slash}conf.yml";
-String dbFilePath = DEBUG ? debugDbFilePath : "${Platform.resolvedExecutable}${slash}metadata.json";
+String confFilePath = getConfFilePath();
+String dbFilePath = getDBFilePath();
 DateFormat dateFormat = DateFormat("dd/MM/yyyy-HH:mm");
 bool hasConfChanged = false;
 Console console = Console();
 RegExp variableRegex = RegExp(r'\$\{([^}]+)\}');
 
+String getDBFilePath(){
+  List<String> execPath = Platform.resolvedExecutable.split(slash);
+  execPath.removeLast();
+  String directory = execPath.join(slash);
+  String nonDebugFilePath =  "${directory}${slash}metadata.json";
+  return DEBUG ? debugDbFilePath : nonDebugFilePath;
+}
+
+String getConfFilePath(){
+  List<String> execPath = Platform.resolvedExecutable.split(slash);
+  execPath.removeLast();
+  String directory = execPath.join(slash);
+  String nonDebugFilePath =  "${directory}${slash}conf.yml";
+  return DEBUG ? debugConfFilePath : nonDebugFilePath;
+}
 YamlMap loadConfFile(){
   File confFile = File(confFilePath);
   if (!confFile.existsSync()){
-    print("FILE IS CREATED");
+    logger("FILE IS CREATED");
     confFile.createSync(recursive: true);
     return YamlMap();
   }
@@ -49,7 +64,6 @@ YamlMap loadConfFile(){
     conf = loadYaml(confFile.readAsStringSync());
   }
   catch(e){
-    print("");
     throw Exception("Unable to parse the yaml File");
   }
   return conf;
@@ -66,7 +80,7 @@ Map<String,dynamic> loadMetdataFile(){
   try {
     return jsonDecode(jsonFile);
   }
-  catch (e,s){
+  catch (e){
     if (jsonFile.length == 1 && jsonFile.contains("")){
       return {};
     }
@@ -111,10 +125,10 @@ String getExportPath(YamlMap configFile){
     throw Exception("No paths were specified in the configuration file");
   }
   YamlMap paths = configFile["paths"];
-  if (!paths.containsKey("exportPath")){
+  if (!paths.containsKey("export_path")){
     throw Exception("No export path was specified in the configuration file");
   }
-  return paths["exportPath"];
+  return paths["export_path"];
 }
 
 YamlMap getTemplateFiles(YamlMap configFile){
@@ -125,8 +139,8 @@ YamlMap getTemplateFiles(YamlMap configFile){
 }
 
 YamlMap getTemplateInfo(YamlMap templateFiles, String templateName){
-  print("Template files -> ${templateFiles["template_files"]}");
-  print("Searched template $templateName");
+  logger("Template files -> ${templateFiles["template_files"]}");
+  logger("Searched template $templateName");
   if (!(templateFiles["template_files"].containsKey(templateName))){
     throw Exception("The searched template doesn't exist");
   }
@@ -236,27 +250,35 @@ void main(List<String> arguments){
   String command = arguments[0];
   String? args = arguments.length > 1 ? arguments[1] : null;
   int exitCode = -1;
+  bool needsUpdate = true;
   switch (command){
     case helpCommand:
-      print("List of commands for wmanager \n-h \t Displays available commands\ncreate \t Creates a new job application \nopen <argument> \t opens a specific file linked to an application \nexport \t Exports the application\n");
+      print("List of commands for wmanager \n-h                   \t Displays available commands\ncreate <name>     \t Creates a new job application \nopen <template>   \t opens a specific file linked to an application \nexport            \t Exports the application\n");
+      needsUpdate = false;
       exitCode = 0;
     case loadCommand:
       exitCode = loadApplicationView(metadataFile, selectedApplication);
+      needsUpdate = exitCode == 0;
       break;
     case openCommand:
       exitCode = openApplicationFile(metadataFile,confFile,args,selectedApplication);
+      needsUpdate = false;
       break;
     case createCommand:
       exitCode = createApplication(metadataFile, args,selectedApplication,confFile);
+      needsUpdate = exitCode == 0;
       break;
     case exportCommand:
       exitCode = exportApplication(metadataFile,confFile,selectedApplication);
+      needsUpdate = false;
       break;
     default:
       print("Wrong command, type wmanager -h to see available commands");
+      needsUpdate = false;
       exit(-1);
   }
-  dumpChanges(metadataFile, confFile, dbFilePath, confFilePath);
+  dumpChanges(metadataFile, confFile, dbFilePath, confFilePath,needsUpdate: needsUpdate);
+  exit(exitCode);
 }
 
 int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? selectedApplication){
@@ -290,7 +312,7 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
           console.clearScreen();
           break;
         case ControlCharacter.arrowDown:
-          print("ARROW DOWN");
+          logger("ARROW DOWN");
           selectedIndex = (selectedIndex +1) % listLength;
           index = 0;
           console.clearScreen();
@@ -299,7 +321,6 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
           loadApplication(metadata, selectedApplication, applicationsValues[selectedIndex].key);
           index = 0;
           return 0;
-          break;
         case ControlCharacter.ctrlC:
           return 0;
         default:
@@ -307,11 +328,10 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
       }
     }
   }
-  return -1;
 }
 
 int loadApplication(Map<String,dynamic> metadata, MapEntry<String,dynamic>? selectedApplication, applicationID){
-  print(metadata);
+  logger(metadata);
   MapEntry<dynamic,dynamic> intermediate = metadata["applications"].entries.firstWhere((e) => e.key == applicationID);
   selectedApplication = MapEntry<String,dynamic>(intermediate.key as String, intermediate.value as Map<String,dynamic>);
   metadata["loadedApplication"] = {
@@ -405,19 +425,30 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
           return "";
       }
     });
-    print("exportCommand is now ${exportCommand}");
+    logger("exportCommand is now ${exportCommand}");
     if (undefinedVariable){
       print(errorMessage);
       return -1;
     }
+
     List<String> args = parseCommand(exportCommand);
     String applicationPath = "${getApplicationsPath(config)}/${selectedApplication.key}";
-    print("args -> ${args}");
+
     ProcessResult res = Process.runSync(args[0], args.sublist(1), workingDirectory: applicationPath);
     if (res.exitCode != 0){
       print("THERE WAS AN ERROR WHILE EXPORTING THE TEMPLATE ${res.stderr}");
       return -1;
     }
+    String templateExportFilename = getTemplateExportFilename(template.value, selectedApplication.value["name"]);
+    File exportedFile = File("$applicationPath$slash$templateExportFilename");
+    if (!exportedFile.existsSync()){
+      print("The exported file cannot be found at ${applicationPath}, please check if your command produces a output file with name specified in your config.yml file");
+      logger("Filename is ${exportedFile}");
+      return -1;
+    }
+    String exportPath = getExportPath(config);
+    logger("Now copying file to $exportPath$templateExportFilename");
+    exportedFile.copySync("$exportPath$templateExportFilename");
   }
   return 0;
 }
@@ -450,7 +481,7 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
       errorMessage = "Unable to find the referenced template - Please check open_command for $args in your conf.yaml file at $confFilePath";
     }
     YamlMap referencedTemplate = statement[0] == "self"  ? templateInfo : config["template_files"][statement[0]];
-    print("REFERENCED TEMPLATE -> $referencedTemplate");
+    logger("REFERENCED TEMPLATE -> $referencedTemplate");
     String referencedFilename = referencedTemplate.containsKey("is_asset") && referencedTemplate["is_asset"]
         ? referencedTemplate["name"] : getTemplateOutputFilename(referencedTemplate, selectedApplication.value["name"]);
     String templateFilePath = "${getApplicationsPath(config)}${selectedApplication.key}${slash}${referencedFilename}";
@@ -467,18 +498,21 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
     print(errorMessage);
     return -1;
   }
-  print("Current command is ${command}");
+  logger("Current command is ${command}");
   List<String> commandAndArgs = command.split(" ");
   ProcessResult res = Process.runSync(commandAndArgs[0], commandAndArgs.sublist(1));
-  print("DEBUG ONLY : ${res.stdout}");
-  print("\t ${res.stderr}");
+  logger("DEBUG ONLY : ${res.stdout}");
+  logger("\t ${res.stderr}");
   if (res.exitCode != 0){
     return -1;
   }
   return 0;
 }
 
-void dumpChanges(Map<String,dynamic> metadata, YamlMap config, String metadataPath, String configPath){
+void dumpChanges(Map<String,dynamic> metadata, YamlMap config, String metadataPath, String configPath, {bool needsUpdate=true}){
+  if (!needsUpdate){
+    return;
+  }
   File metadataFile = File(metadataPath);
   File configFile = File(configPath);
   if (!metadataFile.existsSync()){

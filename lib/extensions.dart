@@ -3,3 +3,9 @@ import 'package:io/io.dart';
 List<String> parseCommand(String command) {
   return shellSplit(command);
 }
+
+void logger(value){
+  if (DEBUG){
+    print(value);
+  }
+}
