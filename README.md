@@ -83,7 +83,7 @@ paths:
 - **Use absolute paths** — prefer /full/path/... (tilde ~ expansion is not assumed). Trailing slashes on paths are recommended.
 - **Commands are arbitrary shell commands** — open_command and export_command run in your shell environment with variables substituted. This enables maximum flexibility.
 
-You can check the docs/exampleConf.yml for an explanation of each field
+  You can check the docs/exampleConf.yml for an explanation of each field
 ----
 
 ## **Commands & behavior**
