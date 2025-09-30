@@ -26,17 +26,32 @@ import 'package:dart_console/dart_console.dart';
     - applications_path : ""
     - export_path: ""
  */
+/// End of the structure of the conf.yml file
+
+/// Variable to separate slashes from windows and unix platforms
 String slash = Platform.isWindows ? "\\":"/";
+/// Debug variable to enable specific functionalities
 bool DEBUG = bool.fromEnvironment('DEBUG', defaultValue: false);
+/// Debug filepath for the config file for testing
 String debugConfFilePath = DEBUG ? String.fromEnvironment("confPath", defaultValue: "") : "";
+/// Debug filepath for the metadata file
 String debugDbFilePath = DEBUG ? String.fromEnvironment("dbPath", defaultValue: "") : "";
+/// Variable which contains the filepath of the config file
 String confFilePath = getConfFilePath();
+/// Variable which contains the filepath of the metadata file (json file)
 String dbFilePath = getDBFilePath();
+/// DateFormat object to either parse or format dates in the program
 DateFormat dateFormat = DateFormat("dd/MM/yyyy-HH:mm");
+/// Bool which indicates if the config file needs updating one the screen
 bool hasConfChanged = false;
+/// Console object for writing and clearing the screen
 Console console = Console();
+/// Regex which detects ${} patterns in a string
 RegExp variableRegex = RegExp(r'\$\{([^}]+)\}');
 
+/// Function which return the Metadata file path according to the current config the program is being executed in (debug mode or normal mode)
+///
+/// Returns a string representing the metadata file path
 String getDBFilePath(){
   List<String> execPath = Platform.resolvedExecutable.split(slash);
   execPath.removeLast();
@@ -45,6 +60,9 @@ String getDBFilePath(){
   return DEBUG ? debugDbFilePath : nonDebugFilePath;
 }
 
+/// Function which return the Config file path according to the current config the program is being executed in (debug mode or normal mode)
+///
+/// Returns a string representing the config file path
 String getConfFilePath(){
   List<String> execPath = Platform.resolvedExecutable.split(slash);
   execPath.removeLast();
@@ -52,6 +70,10 @@ String getConfFilePath(){
   String nonDebugFilePath =  "${directory}${slash}conf.yml";
   return DEBUG ? debugConfFilePath : nonDebugFilePath;
 }
+
+/// Loads the config file from the disk into a YamlMap object
+///
+/// Returns a YamlMap representing the "deserialized" config file
 YamlMap loadConfFile(){
   File confFile = File(confFilePath);
   if (!confFile.existsSync()){
@@ -69,6 +91,9 @@ YamlMap loadConfFile(){
   return conf;
 }
 
+/// Loads the metadata file from the disk into a Map<String,dynamic> object
+///
+/// Returns a YamlMap representing the "deserialized" metadata file
 Map<String,dynamic> loadMetdataFile(){
   File metadataFile = File(dbFilePath);
   if (!metadataFile.existsSync()){
@@ -90,6 +115,11 @@ Map<String,dynamic> loadMetdataFile(){
   }
 }
 
+/// Function which returns the currently loaded application according to the content of the "loadedApplication" key in the metadata file
+///
+/// Takes a Map representing the metadata file
+///
+/// Returns a Map in case a application is loaded and was opened in the last 2 days, null otherwise
 MapEntry<String,dynamic>? getLoadedApplication(Map<String,dynamic> metadata){
   if (metadata.containsKey("loadedApplication") && metadata["loadedApplication"].containsKey("lastOpened") && metadata["loadedApplication"].containsKey("id")){
     Map<String,dynamic> loadedApplicationInfo = metadata["loadedApplication"];
@@ -107,6 +137,11 @@ MapEntry<String,dynamic>? getLoadedApplication(Map<String,dynamic> metadata){
   }
 }
 
+/// Function which parses the config file and returns the application_path value
+///
+/// Takes a YamlMap representing the config file
+///
+/// Returns a String containing the path of where the applications should be saved
 String getApplicationsPath(YamlMap configFile){
   if (!configFile.containsKey("paths")){
     throw Exception("No paths were specified in the configuration file");
@@ -120,6 +155,11 @@ String getApplicationsPath(YamlMap configFile){
   }
 }
 
+/// Function which parses the config file and returns the export_path value
+///
+/// Takes a YamlMap representing the config file
+///
+/// Returns a String containing the path of where the applications should be exported
 String getExportPath(YamlMap configFile){
   if (!configFile.containsKey("paths")){
     throw Exception("No paths were specified in the configuration file");
@@ -131,6 +171,11 @@ String getExportPath(YamlMap configFile){
   return paths["export_path"];
 }
 
+/// Function which parses the config file and returns all of the registered templates in the config file
+///
+/// Takes a YamlMap representing the config file
+///
+/// Returns a YamlMap object which is a dictionary containing all templates
 YamlMap getTemplateFiles(YamlMap configFile){
   if (!configFile.containsKey("template_files")){
     throw Exception("No template file was specified in the configuration file");
@@ -138,6 +183,11 @@ YamlMap getTemplateFiles(YamlMap configFile){
   return configFile["template_files"];
 }
 
+/// Function which parses the templates YamlMap and returns the specific info of a requested template
+///
+/// Takes a YamlMap representing the configured templates and a String which represents the name of the template
+///
+/// Return a YamlMap object which is the dictionary of a configured template
 YamlMap getTemplateInfo(YamlMap templateFiles, String templateName){
   logger("Template files -> ${templateFiles["template_files"]}");
   logger("Searched template $templateName");
@@ -147,6 +197,11 @@ YamlMap getTemplateInfo(YamlMap templateFiles, String templateName){
   return templateFiles["template_files"][templateName];
 }
 
+/// Function which parses a specific template and returns the open_command value
+///
+/// Takes a YamlMap representing a configured template
+///
+/// Returns a String representing the command to execute when calling "wmanager open templateName"
 String getTemplateOpenCommand(YamlMap template){
   if (!template.containsKey("open_command")){
     if (!template.containsKey("path")) throw Exception("The following template doesn't have a path");
@@ -155,21 +210,40 @@ String getTemplateOpenCommand(YamlMap template){
   return template["open_command"];
 }
 
+/// Function which parses a specific template and returns the export_command value
+///
+/// Takes a YamlMap representing a configured template
+///
+/// Returns a String representing the command to execute when calling "wmanager export"
 String getTemplateExportCommand(YamlMap template){
   if (!template.containsKey("export_command")) throw Exception("The following template doesn't have an export command");
   return template["export_command"];
 }
 
+/// Function which parses a specific template and returns the output_name value
+///
+/// Takes a YamlMap representing a configured template
+///
+/// Returns a String representing the output_name when copying the template files to a specific application folder
 String getTemplateOutputName(YamlMap template){
   if (!template.containsKey("output_name")) throw Exception("The following template doesn't have an output_name command");
   return template["output_name"];
 }
-
+/// Function which parses a specific template and returns the export_name value
+///
+/// Takes a YamlMap representing a configured template
+///
+/// Returns a String representing the export_name when exporting the template files to the export folder
 String getTemplateExportName(YamlMap template){
   if (!template.containsKey("export_name")) throw Exception("The following template doesn't have an output_name command");
   return template["export_name"];
 }
 
+/// Function which parses a specific template and returns the is_asset value
+///
+/// Takes a YamlMap representing a configured template
+///
+/// Returns a bool representing if the selected template is an asset or not
 bool isAsset(YamlMap template){
   if (!template.containsKey("is_asset")){
     return false;
@@ -177,6 +251,11 @@ bool isAsset(YamlMap template){
   return template["is_asset"];
 }
 
+/// Function which creates a new application ID for a new application
+///
+/// Takes a list of String representing the existing ID and the application name entered by the user
+///
+/// Returns a String representing the ID of the application
 String getApplicationID(List<String> ids, String applicationName){
   bool hasFoundID = false;
   String selectedID = "";
@@ -187,10 +266,20 @@ String getApplicationID(List<String> ids, String applicationName){
   return selectedID;
 }
 
+/// Function which return the ${wname} of the application
+///
+/// Takes a String which is the name of the application
+///
+/// Returns a String representing the filesystem friendly name of the application
 String getApplicationFilename(String name){
   return name.toUpperCase().replaceAll(" ", "");
 }
 
+/// Function which parses a specific template and returns its name for a specific application
+///
+/// Takes a YamlMap representing a configured template and the application name
+///
+/// Returns a String reprsenting the adapted filename of the template for a specific application
 String getTemplateOutputFilename(YamlMap template, String name){
   bool undefinedVariable = false;
   String applicationTemplateName = getTemplateOutputName(template);
@@ -212,27 +301,11 @@ String getTemplateOutputFilename(YamlMap template, String name){
   return applicationTemplateName;
 }
 
-String getTemplateExportFilename(YamlMap template, String name){
-  bool undefinedVariable = false;
-  String applicationTemplateName = getTemplateExportName(template);
-  String applicationGeneratedName = getApplicationFilename(name);
-  applicationTemplateName = applicationTemplateName.replaceAllMapped(variableRegex, (match){
-    String varName = match.group(1)!;
-    switch (varName){
-      case "wname":
-        return applicationGeneratedName;
-      default:
-        undefinedVariable = true;
-        return "";
-    }
-  });
-  if (undefinedVariable){
-    print("Undefined variable for ${template.keys} - please check conf.yml file");
-    throw Exception("Undefined variable");
-  }
-  return applicationTemplateName;
-}
-
+/// Function which deletes a specific application
+///
+/// Takes a String representing the application Id, the application directory and Map representing the metadata file
+///
+/// Returns an integer representing the status of the operation,0 if the deletion was successful, -1 if not
 int deleteApplication(String applicationID, String applicationsDirectory,Map<String,dynamic> metadata){
   Directory applicationDirectory = Directory("$applicationsDirectory$slash$applicationID");
   if (!applicationDirectory.existsSync()){
@@ -262,24 +335,63 @@ int deleteApplication(String applicationID, String applicationsDirectory,Map<Str
   metadata["applications"].remove(applicationID);
   return 0;
 }
+
+/// Function which parses a specific template and returns its export name for a specific application
+///
+/// Takes a YamlMap representing a configured template and the application name
+///
+/// Returns a String reprsenting the adapted export filename of the template for a specific application
+String getTemplateExportFilename(YamlMap template, String name){
+  bool undefinedVariable = false;
+  String applicationTemplateName = getTemplateExportName(template);
+  String applicationGeneratedName = getApplicationFilename(name);
+  applicationTemplateName = applicationTemplateName.replaceAllMapped(variableRegex, (match){
+    String varName = match.group(1)!;
+    switch (varName){
+      case "wname":
+        return applicationGeneratedName;
+      default:
+        undefinedVariable = true;
+        return "";
+    }
+  });
+  if (undefinedVariable){
+    print("Undefined variable for ${template.keys} - please check conf.yml file");
+    throw Exception("Undefined variable");
+  }
+  return applicationTemplateName;
+}
+
+/// Main function of the program
+///
+/// Takes a List of string representing the arguments
 void main(List<String> arguments){
+
+  /// Constants for input arguments
   const String loadCommand = "load";
   const String createCommand = "create";
   const String openCommand = "open";
   const String exportCommand = "export";
   const String helpCommand = "-h";
 
+  /// Config file in a YamlMap object
   YamlMap confFile = loadConfFile();
+  // Loading the metadata file from disk
   Map<String,dynamic> metadataFile =  loadMetdataFile();
+  // Getting the loaded application
   MapEntry<String,dynamic>? selectedApplication = getLoadedApplication(metadataFile);
+  // Checking if the tool was called correctly with the right arguments
   if (arguments.isEmpty){
     print("Usage : wmanager <command> <arguments>");
     exit(-1);
   }
   String command = arguments[0];
   String? args = arguments.length > 1 ? arguments[1] : null;
+  // Exit code for returning the right exit status to the parent program
   int exitCode = -1;
+  // Variable to keep track of the metadata file update on disk
   bool needsUpdate = true;
+  // Switch case based on the command passed by the user
   switch (command){
     case helpCommand:
       print("List of commands for wmanager \n-h                   \t Displays available commands\ncreate <name>     \t Creates a new job application \nopen <template>   \t opens a specific file linked to an application \nexport            \t Exports the application\n");
@@ -306,10 +418,15 @@ void main(List<String> arguments){
       needsUpdate = false;
       exit(-1);
   }
+  // Writing changes on disk for the metadata file and config file, changed only if needsUpdate is set to true
   dumpChanges(metadataFile, confFile, dbFilePath, confFilePath,needsUpdate: needsUpdate);
   exit(exitCode);
 }
-
+/// Function which displays the list of created applications to select
+///
+/// Takes a Map representing the metadata file, the loaded application and the config file
+///
+/// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
 int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? selectedApplication, YamlMap config){
   bool hasSelectedApplication = false;
   if (!metadata.containsKey("applications")) metadata["applications"] = {};
@@ -369,7 +486,11 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
   }
 }
 
-
+/// Function which loads a specific application and updates the metadata file
+///
+/// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file
+///
+/// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
 int loadApplication(Map<String,dynamic> metadata, MapEntry<String,dynamic>? selectedApplication, applicationID){
   logger(metadata);
   MapEntry<dynamic,dynamic> intermediate = metadata["applications"].entries.firstWhere((e) => e.key == applicationID);
@@ -381,6 +502,11 @@ int loadApplication(Map<String,dynamic> metadata, MapEntry<String,dynamic>? sele
   return 0;
 }
 
+/// Function which creates an application following passed by the user
+///
+/// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file
+///
+/// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
 int createApplication(Map<String,dynamic> metadata, String? argument,MapEntry<String,dynamic>? selectedApplication, YamlMap config){
   if (argument == null){
     print("Wrong usage : wmanager create <Application Name>");
@@ -421,6 +547,11 @@ int createApplication(Map<String,dynamic> metadata, String? argument,MapEntry<St
   return 0;
 }
 
+/// Function which exports the loaded applications to the export_path
+///
+/// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file
+///
+/// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
 int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<String,dynamic>? selectedApplication){
   if (selectedApplication == null){
     print("No applications is loaded, try loading one with : wmanager load");
@@ -493,6 +624,11 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
   return 0;
 }
 
+/// Function which opens a specific template based on the user input
+///
+/// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file and a String? which is the argument passed by the user
+///
+/// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
 int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? args, MapEntry<String,dynamic>? selectedApplication){
   if (args == null){
     print("Missing argument for open command, Usage : wmanager open <template_name>");
@@ -548,6 +684,9 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
   }
   return 0;
 }
+/// Function which dumps any changes made to the metadata file on the disk
+///
+/// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file and a optional bool which represents if there is a need to write on the disk
 
 void dumpChanges(Map<String,dynamic> metadata, YamlMap config, String metadataPath, String configPath, {bool needsUpdate=true}){
   if (!needsUpdate){
