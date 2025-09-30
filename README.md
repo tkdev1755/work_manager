@@ -39,9 +39,9 @@ wmanager export
 ```
 ----
 ## **Installation**
-- Either download a release or compile the project from scratch (see the wiki for Compiling the sources)
+- Either download a release or compile the project from scratch (see the wiki for [Compiling the sources](https://github.com/tkdev1755/work_manager/wiki/Compiling-from-source))
 - run the `install.sh` script provided in the archive from the github release (or in the buildAssets folder from the repo)
-- Create your config file in your installation folder (~/work_manager/) by following the example file in docs/exampleConf.yml
+- Create your config file in your installation folder (~/work_manager/) by following the example file in docs/exampleConf.yml or reading [the guide in the wiki](https://github.com/tkdev1755/work_manager/wiki/Writing-a-conf.yml-file)
 ----
 
 ## **Configuration (conf.yml)**
