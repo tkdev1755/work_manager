@@ -91,7 +91,7 @@ YamlMap loadConfFile(){
   return conf;
 }
 
-/// Loads the metadata file from the disk into a Map<String,dynamic> object
+/// Loads the metadata file from the disk into a Map&ltString,dynamic&gt object
 ///
 /// Returns a YamlMap representing the "deserialized" metadata file
 Map<String,dynamic> loadMetdataFile(){
