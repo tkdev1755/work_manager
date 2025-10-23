@@ -18,7 +18,7 @@ Focus on writing great applications; let wmanager handle the copying, naming and
 - Load an application to operate on (so open / export act on the current application).
 - Open any template with the command you configured (editor, word processor, previewer).
 - Export files by running custom export commands (Typst, LaTeX, Pandoc, custom bash script, etc.) and copy results to a dedicated export folder.
-- Full flexibility over your workflow when importing your code
+- Full flexibility over your workflow when creating job applications
 
 ----
 
