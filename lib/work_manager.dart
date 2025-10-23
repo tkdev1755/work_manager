@@ -56,7 +56,7 @@ String getDBFilePath(){
   List<String> execPath = Platform.resolvedExecutable.split(slash);
   execPath.removeLast();
   String directory = execPath.join(slash);
-  String nonDebugFilePath =  "${directory}${slash}metadata.json";
+  String nonDebugFilePath =  "$directory${slash}metadata.json";
   return DEBUG ? debugDbFilePath : nonDebugFilePath;
 }
 
@@ -67,7 +67,7 @@ String getConfFilePath(){
   List<String> execPath = Platform.resolvedExecutable.split(slash);
   execPath.removeLast();
   String directory = execPath.join(slash);
-  String nonDebugFilePath =  "${directory}${slash}conf.yml";
+  String nonDebugFilePath =  "$directory${slash}conf.yml";
   return DEBUG ? debugConfFilePath : nonDebugFilePath;
 }
 
@@ -477,8 +477,8 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
       switch (resultKey.char){
         case "r":
           print("Deleting application");
-          int status_code =  deleteApplication(applicationsValues[selectedIndex].key,getApplicationsPath(config),metadata);
-          return status_code;
+          int statusCode =  deleteApplication(applicationsValues[selectedIndex].key,getApplicationsPath(config),metadata);
+          return statusCode;
         default:
           break;
       }
@@ -514,7 +514,6 @@ int createApplication(Map<String,dynamic> metadata, String? argument,MapEntry<St
   }
   if (!metadata.containsKey("applications")) metadata["applications"] = {};
 
-  Map<dynamic,dynamic> applications = metadata["applications"];
   String applicationID = getApplicationID(metadata.keys.toList(),argument);
   String applicationName = argument;
   metadata["applications"][applicationID] = {
@@ -596,7 +595,7 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
           return "";
       }
     });
-    logger("exportCommand is now ${exportCommand}");
+    logger("exportCommand is now $exportCommand");
     if (undefinedVariable){
       print(errorMessage);
       return -1;
@@ -613,8 +612,8 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
     String templateExportFilename = getTemplateExportFilename(template.value, selectedApplication.value["name"]);
     File exportedFile = File("$applicationPath$slash$templateExportFilename");
     if (!exportedFile.existsSync()){
-      print("The exported file cannot be found at ${applicationPath}, please check if your command produces a output file with name specified in your config.yml file");
-      logger("Filename is ${exportedFile}");
+      print("The exported file cannot be found at $applicationPath, please check if your command produces a output file with name specified in your config.yml file");
+      logger("Filename is $exportedFile");
       return -1;
     }
     String exportPath = getExportPath(config);
@@ -660,7 +659,7 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
     logger("REFERENCED TEMPLATE -> $referencedTemplate");
     String referencedFilename = referencedTemplate.containsKey("is_asset") && referencedTemplate["is_asset"]
         ? referencedTemplate["name"] : getTemplateOutputFilename(referencedTemplate, selectedApplication.value["name"]);
-    String templateFilePath = "${getApplicationsPath(config)}${selectedApplication.key}${slash}${referencedFilename}";
+    String templateFilePath = "${getApplicationsPath(config)}${selectedApplication.key}$slash$referencedFilename";
     switch (statement[1]){
       case "path":
         return templateFilePath;
@@ -674,7 +673,7 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
     print(errorMessage);
     return -1;
   }
-  logger("Current command is ${command}");
+  logger("Current command is $command");
   List<String> commandAndArgs = command.split(" ");
   ProcessResult res = Process.runSync(commandAndArgs[0], commandAndArgs.sublist(1));
   logger("DEBUG ONLY : ${res.stdout}");
