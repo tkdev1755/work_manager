@@ -42,7 +42,7 @@ String confFilePath = getConfFilePath();
 String dbFilePath = getDBFilePath();
 /// DateFormat object to either parse or format dates in the program
 DateFormat dateFormat = DateFormat("dd/MM/yyyy-HH:mm");
-/// Bool which indicates if the config file needs updating one the screen
+/// Bool which indicates if the config file needs updating one the disk
 bool hasConfChanged = false;
 /// Console object for writing and clearing the screen
 Console console = Console();
@@ -336,6 +336,12 @@ int deleteApplication(String applicationID, String applicationsDirectory,Map<Str
   return 0;
 }
 
+String getCurrentApplicationName(Map<String,dynamic> metadata, MapEntry<String,dynamic> loadedApplication){
+  print(loadedApplication);
+  String applicationName = loadedApplication.value["name"];
+  return applicationName;
+}
+
 /// Function which parses a specific template and returns its export name for a specific application
 ///
 /// Takes a YamlMap representing a configured template and the application name
@@ -372,8 +378,8 @@ void main(List<String> arguments){
   const String createCommand = "create";
   const String openCommand = "open";
   const String exportCommand = "export";
+  const String currentCommand = "current";
   const String helpCommand = "-h";
-
   /// Config file in a YamlMap object
   YamlMap confFile = loadConfFile();
   // Loading the metadata file from disk
@@ -411,6 +417,10 @@ void main(List<String> arguments){
       break;
     case exportCommand:
       exitCode = exportApplication(metadataFile,confFile,selectedApplication);
+      needsUpdate = false;
+      break;
+    case currentCommand:
+      exitCode = currentApplication(metadataFile, confFile, selectedApplication);
       needsUpdate = false;
       break;
     default:
@@ -683,6 +693,18 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
   }
   return 0;
 }
+
+int currentApplication(Map<String,dynamic> metadata, YamlMap config, MapEntry<String,dynamic>? selectedApplication){
+  if (selectedApplication == null){
+    print("No applications loaded at the moment, please load one with the command : \nwmanager load");
+    return -1;
+  }
+  String applicationPath = getApplicationsPath(config);
+  String applicationName = getCurrentApplicationName(metadata, selectedApplication);
+  print("Current application info - \n  Name : ${applicationName} \n  Folder : ${applicationPath}$slash${selectedApplication.key}");
+  return 0;
+}
+
 /// Function which dumps any changes made to the metadata file on the disk
 ///
 /// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file and a optional bool which represents if there is a need to write on the disk
