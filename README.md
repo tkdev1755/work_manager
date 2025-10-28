@@ -34,6 +34,10 @@ wmanager load
 # open the template named "resume" for the currently loaded application
 wmanager open resume
 
+
+# Shows the information about the loaded application
+wmanager current
+
 # exports all the files associated to an application to the dedicated export folder
 wmanager export
 ```
@@ -110,6 +114,10 @@ paths:
     1. Runs the configured export_command (e.g., compile the file).
     2. Copies `export_name` (or the expected export artifact) to `export_path`.
 
+- `wmanager current`
+
+  Shows the info on the current loaded application
+- 
 ----
 
 ## **Typical workflow**
