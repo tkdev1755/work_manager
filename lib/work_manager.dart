@@ -29,7 +29,7 @@ import 'package:dart_console/dart_console.dart';
 /// End of the structure of the conf.yml file
 
 /// Variable to separate slashes from windows and unix platforms
-String slash = Platform.isWindows ? "\\":"/";
+String slash = Platform.isWindows ? "\"":"/";
 /// Debug variable to enable specific functionalities
 bool DEBUG = bool.fromEnvironment('DEBUG', defaultValue: false);
 /// Debug filepath for the config file for testing
@@ -192,7 +192,7 @@ YamlMap getTemplateInfo(YamlMap templateFiles, String templateName){
   logger("Template files -> ${templateFiles["template_files"]}");
   logger("Searched template $templateName");
   if (!(templateFiles["template_files"].containsKey(templateName))){
-    throw Exception("The searched template doesn't exist");
+    throw Exception("The searched template doesn\'t exist");
   }
   return templateFiles["template_files"][templateName];
 }
@@ -204,7 +204,7 @@ YamlMap getTemplateInfo(YamlMap templateFiles, String templateName){
 /// Returns a String representing the command to execute when calling "wmanager open templateName"
 String getTemplateOpenCommand(YamlMap template){
   if (!template.containsKey("open_command")){
-    if (!template.containsKey("path")) throw Exception("The following template doesn't have a path");
+    if (!template.containsKey("path")) throw Exception("The following template doesn\'t have a path");
     return "open ${template["path"]}" ;
   }
   return template["open_command"];
@@ -216,7 +216,7 @@ String getTemplateOpenCommand(YamlMap template){
 ///
 /// Returns a String representing the command to execute when calling "wmanager export"
 String getTemplateExportCommand(YamlMap template){
-  if (!template.containsKey("export_command")) throw Exception("The following template doesn't have an export command");
+  if (!template.containsKey("export_command")) throw Exception("The following template doesn\'t have an export command");
   return template["export_command"];
 }
 
@@ -226,7 +226,7 @@ String getTemplateExportCommand(YamlMap template){
 ///
 /// Returns a String representing the output_name when copying the template files to a specific application folder
 String getTemplateOutputName(YamlMap template){
-  if (!template.containsKey("output_name")) throw Exception("The following template doesn't have an output_name command");
+  if (!template.containsKey("output_name")) throw Exception("The following template doesn\'t have an output_name command");
   return template["output_name"];
 }
 /// Function which parses a specific template and returns the export_name value
@@ -235,7 +235,7 @@ String getTemplateOutputName(YamlMap template){
 ///
 /// Returns a String representing the export_name when exporting the template files to the export folder
 String getTemplateExportName(YamlMap template){
-  if (!template.containsKey("export_name")) throw Exception("The following template doesn't have an output_name command");
+  if (!template.containsKey("export_name")) throw Exception("The following template doesn\'t have an output_name command");
   return template["export_name"];
 }
 
@@ -301,40 +301,7 @@ String getTemplateOutputFilename(YamlMap template, String name){
   return applicationTemplateName;
 }
 
-/// Function which deletes a specific application
-///
-/// Takes a String representing the application Id, the application directory and Map representing the metadata file
-///
-/// Returns an integer representing the status of the operation,0 if the deletion was successful, -1 if not
-int deleteApplication(String applicationID, String applicationsDirectory,Map<String,dynamic> metadata){
-  Directory applicationDirectory = Directory("$applicationsDirectory$slash$applicationID");
-  if (!applicationDirectory.existsSync()){
-    print("Application directory doesn't seems to exist");
-    return -1;
-  }
-  try {
-    applicationDirectory.deleteSync(recursive: true);
-  }
-  on FileSystemException catch (e){
-    print("Unable to delete the folder because of the following error : ${e.osError} - ${e.message}");
-    return -1;
-  }
-  if (!metadata.containsKey("applications")){
-    print("No applications were created");
-    return -1;
-  }
-  if (!metadata["applications"].containsKey(applicationID)){
-    print("This application doesn't exist in the metadata file");
-    return -1;
-  }
-  if (metadata.containsKey("loadedApplication")){
-    if (metadata["loadedApplication"]?["id"] ==  applicationID){
-      metadata.remove("loadedApplication");
-    }
-  }
-  metadata["applications"].remove(applicationID);
-  return 0;
-}
+
 
 String getCurrentApplicationName(Map<String,dynamic> metadata, MapEntry<String,dynamic> loadedApplication){
   print(loadedApplication);
@@ -368,6 +335,44 @@ String getTemplateExportFilename(YamlMap template, String name){
   return applicationTemplateName;
 }
 
+String formatCommand(String command, YamlMap config, Map<String,dynamic>metadata, MapEntry<String,YamlMap> template,MapEntry<String,dynamic> selectedApplication){
+  bool undefinedVariable = false;
+  String errorMessage = "";
+  command = command.replaceAllMapped(variableRegex, (match){
+    String varName = match.group(1)!;
+    List<String> statement = varName.split(".");
+    if (statement.length > 2 || statement.length < 2){
+      undefinedVariable = true;
+      errorMessage = "Syntax error";
+      return "";
+    }
+    if (statement[0] != "self" && !config["template_files"].keys.contains(statement[0])){
+      undefinedVariable = true;
+      errorMessage = "Unable to find the referenced template - Please check export_command for ${template.key} in your conf.yaml file at $confFilePath";
+    }
+    YamlMap referencedTemplate = statement[0] == "self"  ? template.value : config["template_files"][statement[0]];
+    String referencedFilename = getTemplateOutputFilename(referencedTemplate, selectedApplication.value["name"]);
+    String referencedExportFilename = getTemplateExportFilename(referencedTemplate, selectedApplication.value["name"]);
+    String templateFilePath = "${getApplicationsPath(config)}${selectedApplication.key}";
+    switch (statement[1]){
+      case "output_name":
+        return referencedFilename;
+      case "path":
+        return templateFilePath;
+      case "export_name":
+        return referencedExportFilename;
+      default:
+        errorMessage = "Undefined variable name - Please check open_command for ${template.key} in your conf.yml file at $confFilePath";
+        undefinedVariable = true;
+        return "";
+    }
+  });
+  if (undefinedVariable){
+    print(errorMessage);
+    throw Exception(errorMessage);
+  }
+  return "";
+}
 /// Main function of the program
 ///
 /// Takes a List of string representing the arguments
@@ -432,6 +437,42 @@ void main(List<String> arguments){
   dumpChanges(metadataFile, confFile, dbFilePath, confFilePath,needsUpdate: needsUpdate);
   exit(exitCode);
 }
+
+/// Function which deletes a specific application
+///
+/// Takes a String representing the application Id, the application directory and Map representing the metadata file
+///
+/// Returns an integer representing the status of the operation,0 if the deletion was successful, -1 if not
+int deleteApplication(String applicationID, String applicationsDirectory,Map<String,dynamic> metadata){
+  Directory applicationDirectory = Directory("$applicationsDirectory$slash$applicationID");
+  if (!applicationDirectory.existsSync()){
+    print("Application directory doesn\'t seems to exist");
+    return -1;
+  }
+  try {
+    applicationDirectory.deleteSync(recursive: true);
+  }
+  on FileSystemException catch (e){
+    print("Unable to delete the folder because of the following error : ${e.osError} - ${e.message}");
+    return -1;
+  }
+  if (!metadata.containsKey("applications")){
+    print("No applications were created");
+    return -1;
+  }
+  if (!metadata["applications"].containsKey(applicationID)){
+    print("This application doesn\'t exist in the metadata file");
+    return -1;
+  }
+  if (metadata.containsKey("loadedApplication")){
+    if (metadata["loadedApplication"]?["id"] ==  applicationID){
+      metadata.remove("loadedApplication");
+    }
+  }
+  metadata["applications"].remove(applicationID);
+  return 0;
+}
+
 /// Function which displays the list of created applications to select
 ///
 /// Takes a Map representing the metadata file, the loaded application and the config file
@@ -443,39 +484,54 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
   Map<String,dynamic> applications = metadata["applications"];
   List applicationsValues = applications.entries.toList();
   int selectedIndex = 0;
-  int index = 0;
+  int scrollOffset = 0;
   int listLength = applicationsValues.length;
+  final int windowHeight = console.windowHeight;
+  final int visibleItemCount = windowHeight - 2;
+
   while (!hasSelectedApplication){
-    for (MapEntry<String,dynamic> application in applicationsValues){
-      index++;
-      if ((selectedIndex+1) == index){
+    console.clearScreen();
+    for (int i = 0; i < visibleItemCount && (scrollOffset + i) < listLength; i++) {
+      int index = scrollOffset + i;
+      MapEntry<String,dynamic> application = applicationsValues[index];
+      if (index == selectedIndex){
         console.setBackgroundColor(ConsoleColor.blue);
         console.writeLine(">${application.value["name"]} (Press r to delete)");
         console.resetColorAttributes();
-        console.writeLine();
       }
       else{
         console.writeLine(" ${application.value["name"]}");
-        console.writeLine();
       }
     }
+    console.writeLine();
+
     Key resultKey  = console.readKey();
     if (resultKey.isControl){
       switch (resultKey.controlChar){
         case ControlCharacter.arrowUp:
-          selectedIndex = (selectedIndex -1) % listLength;
-          index = 0;
-          console.clearScreen();
+          if (selectedIndex > 0) {
+            selectedIndex--;
+            if (selectedIndex < scrollOffset) {
+              scrollOffset = selectedIndex;
+            }
+          } else {
+            selectedIndex = listLength - 1;
+            scrollOffset = listLength > visibleItemCount ? listLength - visibleItemCount : 0;
+          }
           break;
         case ControlCharacter.arrowDown:
-          logger("ARROW DOWN");
-          selectedIndex = (selectedIndex +1) % listLength;
-          index = 0;
-          console.clearScreen();
+          if (selectedIndex < listLength - 1) {
+            selectedIndex++;
+            if (selectedIndex >= scrollOffset + visibleItemCount) {
+              scrollOffset = selectedIndex - visibleItemCount + 1;
+            }
+          } else {
+            selectedIndex = 0;
+            scrollOffset = 0;
+          }
           break;
         case ControlCharacter.enter:
           loadApplication(metadata, selectedApplication, applicationsValues[selectedIndex].key);
-          index = 0;
           return 0;
         case ControlCharacter.ctrlC:
           return 0;
@@ -494,6 +550,7 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
       }
     }
   }
+  return 0;
 }
 
 /// Function which loads a specific application and updates the metadata file
@@ -605,7 +662,6 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
           return "";
       }
     });
-    logger("exportCommand is now $exportCommand");
     if (undefinedVariable){
       print(errorMessage);
       return -1;
@@ -622,7 +678,7 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
     String templateExportFilename = getTemplateExportFilename(template.value, selectedApplication.value["name"]);
     File exportedFile = File("$applicationPath$slash$templateExportFilename");
     if (!exportedFile.existsSync()){
-      print("The exported file cannot be found at $applicationPath, please check if your command produces a output file with name specified in your config.yml file");
+      print("The exported file cannot be found at $applicationPath, please check if your command produces a output file with the name specified in your config.yml file");
       logger("Filename is $exportedFile");
       return -1;
     }
@@ -647,53 +703,62 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
     print("No applications loaded at the moment, please load one with the command : \nwmanager load");
     return -1;
   }
-  YamlMap templateInfo = getTemplateInfo(config, args);
-  String command = getTemplateOpenCommand(templateInfo);
-  bool undefinedVariable = false;
-
-
-  String errorMessage = "";
-  command = command.replaceAllMapped(variableRegex, (match){
-    String varName = match.group(1)!;
-    List<String> statement = varName.split(".");
-    if (statement.length > 2 || statement.length < 2){
-      undefinedVariable = true;
-      errorMessage = "Syntax error";
-      return "";
-    }
-    if (statement[0] != "self" && !config["template_files"].keys.contains(statement[0])){
-      undefinedVariable = true;
-      errorMessage = "Unable to find the referenced template - Please check open_command for $args in your conf.yaml file at $confFilePath";
-    }
-    YamlMap referencedTemplate = statement[0] == "self"  ? templateInfo : config["template_files"][statement[0]];
-    logger("REFERENCED TEMPLATE -> $referencedTemplate");
-    String referencedFilename = referencedTemplate.containsKey("is_asset") && referencedTemplate["is_asset"]
-        ? referencedTemplate["name"] : getTemplateOutputFilename(referencedTemplate, selectedApplication.value["name"]);
-    String templateFilePath = "${getApplicationsPath(config)}${selectedApplication.key}$slash$referencedFilename";
-    switch (statement[1]){
-      case "path":
-        return templateFilePath;
-      default:
-        errorMessage = "Undefined variable name - Please check open_command for $args in your conf.yml file at $confFilePath";
+  try {
+    YamlMap templateInfo = getTemplateInfo(config, args);
+    String command = getTemplateOpenCommand(templateInfo);
+    bool undefinedVariable = false;
+    String errorMessage = "";
+    command = command.replaceAllMapped(variableRegex, (match){
+      String varName = match.group(1)!;
+      List<String> statement = varName.split(".");
+      if (statement.length > 2 || statement.length < 2){
         undefinedVariable = true;
+        errorMessage = "Syntax error";
         return "";
+      }
+      if (statement[0] != "self" && !config["template_files"].keys.contains(statement[0])){
+        undefinedVariable = true;
+        errorMessage = "Unable to find the referenced template - Please check open_command for $args in your conf.yaml file at $confFilePath";
+      }
+      YamlMap referencedTemplate = statement[0] == "self"  ? templateInfo : config["template_files"][statement[0]];
+      logger("REFERENCED TEMPLATE -> $referencedTemplate");
+      String referencedFilename = referencedTemplate.containsKey("is_asset") && referencedTemplate["is_asset"]
+          ? referencedTemplate["name"] : getTemplateOutputFilename(referencedTemplate, selectedApplication.value["name"]);
+      String templateFilePath = "${getApplicationsPath(config)}${selectedApplication.key}$slash$referencedFilename";
+      switch (statement[1]){
+        case "path":
+          return templateFilePath;
+        default:
+          errorMessage = "Undefined variable name - Please check open_command for $args in your conf.yml file at $confFilePath";
+          undefinedVariable = true;
+          return "";
+      }
+    });
+    if (undefinedVariable){
+      print(errorMessage);
+      return -1;
     }
-  });
-  if (undefinedVariable){
-    print(errorMessage);
-    return -1;
+    logger("Current command is $command");
+    List<String> commandAndArgs = command.split(" ");
+    ProcessResult res = Process.runSync(commandAndArgs[0], commandAndArgs.sublist(1));
+    logger("DEBUG ONLY : ${res.stdout}");
+    logger("\t ${res.stderr}");
+    if (res.exitCode != 0){
+      return -1;
+    }
   }
-  logger("Current command is $command");
-  List<String> commandAndArgs = command.split(" ");
-  ProcessResult res = Process.runSync(commandAndArgs[0], commandAndArgs.sublist(1));
-  logger("DEBUG ONLY : ${res.stdout}");
-  logger("\t ${res.stderr}");
-  if (res.exitCode != 0){
+  on Exception catch (e) {
+    print("The searched template doesn\'t exists");
     return -1;
   }
   return 0;
 }
 
+/// Function which displays the loaded application in the app
+///
+/// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file
+///
+/// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
 int currentApplication(Map<String,dynamic> metadata, YamlMap config, MapEntry<String,dynamic>? selectedApplication){
   if (selectedApplication == null){
     print("No applications loaded at the moment, please load one with the command : \nwmanager load");
@@ -702,6 +767,10 @@ int currentApplication(Map<String,dynamic> metadata, YamlMap config, MapEntry<St
   String applicationPath = getApplicationsPath(config);
   String applicationName = getCurrentApplicationName(metadata, selectedApplication);
   print("Current application info - \n  Name : ${applicationName} \n  Folder : ${applicationPath}$slash${selectedApplication.key}");
+  return 0;
+}
+
+int analyzeApplication(Map<String,dynamic> metadata, YamlMap config, MapEntry<String,dynamic>? selectedApplication){
   return 0;
 }
 
