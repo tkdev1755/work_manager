@@ -192,7 +192,7 @@ YamlMap getTemplateInfo(YamlMap templateFiles, String templateName){
   logger("Template files -> ${templateFiles["template_files"]}");
   logger("Searched template $templateName");
   if (!(templateFiles["template_files"].containsKey(templateName))){
-    throw Exception("The searched template doesn\'t exist");
+    throw Exception("The searched template doesn't exist");
   }
   return templateFiles["template_files"][templateName];
 }
@@ -204,7 +204,7 @@ YamlMap getTemplateInfo(YamlMap templateFiles, String templateName){
 /// Returns a String representing the command to execute when calling "wmanager open templateName"
 String getTemplateOpenCommand(YamlMap template){
   if (!template.containsKey("open_command")){
-    if (!template.containsKey("path")) throw Exception("The following template doesn\'t have a path");
+    if (!template.containsKey("path")) throw Exception("The following template doesn't have a path");
     return "open ${template["path"]}" ;
   }
   return template["open_command"];
@@ -216,7 +216,7 @@ String getTemplateOpenCommand(YamlMap template){
 ///
 /// Returns a String representing the command to execute when calling "wmanager export"
 String getTemplateExportCommand(YamlMap template){
-  if (!template.containsKey("export_command")) throw Exception("The following template doesn\'t have an export command");
+  if (!template.containsKey("export_command")) throw Exception("The following template doesn't have an export command");
   return template["export_command"];
 }
 
@@ -226,7 +226,7 @@ String getTemplateExportCommand(YamlMap template){
 ///
 /// Returns a String representing the output_name when copying the template files to a specific application folder
 String getTemplateOutputName(YamlMap template){
-  if (!template.containsKey("output_name")) throw Exception("The following template doesn\'t have an output_name command");
+  if (!template.containsKey("output_name")) throw Exception("The following template doesn't have an output_name command");
   return template["output_name"];
 }
 /// Function which parses a specific template and returns the export_name value
@@ -235,7 +235,7 @@ String getTemplateOutputName(YamlMap template){
 ///
 /// Returns a String representing the export_name when exporting the template files to the export folder
 String getTemplateExportName(YamlMap template){
-  if (!template.containsKey("export_name")) throw Exception("The following template doesn\'t have an output_name command");
+  if (!template.containsKey("export_name")) throw Exception("The following template doesn't have an output_name command");
   return template["export_name"];
 }
 
@@ -446,7 +446,7 @@ void main(List<String> arguments){
 int deleteApplication(String applicationID, String applicationsDirectory,Map<String,dynamic> metadata){
   Directory applicationDirectory = Directory("$applicationsDirectory$slash$applicationID");
   if (!applicationDirectory.existsSync()){
-    print("Application directory doesn\'t seems to exist");
+    print("Application directory doesn't seems to exist");
     return -1;
   }
   try {
@@ -461,7 +461,7 @@ int deleteApplication(String applicationID, String applicationsDirectory,Map<Str
     return -1;
   }
   if (!metadata["applications"].containsKey(applicationID)){
-    print("This application doesn\'t exist in the metadata file");
+    print("This application doesn't exist in the metadata file");
     return -1;
   }
   if (metadata.containsKey("loadedApplication")){
@@ -550,7 +550,6 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
       }
     }
   }
-  return 0;
 }
 
 /// Function which loads a specific application and updates the metadata file
@@ -747,8 +746,9 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
       return -1;
     }
   }
-  on Exception catch (e) {
-    print("The searched template doesn\'t exists");
+  catch (e) {
+
+    print("The searched template doesn't exists");
     return -1;
   }
   return 0;
@@ -766,7 +766,7 @@ int currentApplication(Map<String,dynamic> metadata, YamlMap config, MapEntry<St
   }
   String applicationPath = getApplicationsPath(config);
   String applicationName = getCurrentApplicationName(metadata, selectedApplication);
-  print("Current application info - \n  Name : ${applicationName} \n  Folder : ${applicationPath}$slash${selectedApplication.key}");
+  print("Current application info - \n  Name : $applicationName \n  Folder : $applicationPath$slash${selectedApplication.key}");
   return 0;
 }
 
