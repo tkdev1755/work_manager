@@ -114,6 +114,22 @@ paths:
     1. Runs the configured export_command (e.g., compile the file).
     2. Copies `export_name` (or the expected export artifact) to `export_path`.
 
+- `wmanager preset list`
+
+  Lists all registered presets (excluding the default) with their names and paths.
+
+- `wmanager preset add <name> <path> [--from <existing_preset>]`
+
+  Adds a new preset.  If `--from` is provided, copies all files (template files + template.yml) from the existing preset into the new preset's folder, then registers the new preset in conf.yml.
+
+- `wmanager preset remove <name>`
+
+  Removes a preset by deleting its folder and unregistering it from conf.yml.
+
+- `wmanager migrate`
+
+  Migrates an old-format conf.yml (without `version`, `default_preset`, or `presets` keys) to the latest schema.  Creates a backup before modifying the original file.
+
 - `wmanager current`
 
   Shows the info on the current loaded application
