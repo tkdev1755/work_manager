@@ -253,11 +253,19 @@ void presetAddCommand(
 
   if (fromPresetName != null) {
     if (fromPresetName == "default"){
+      YamlMap defaultTemplates = confFile["default_preset"]["template_files"];
+
       final File templateFile = File('${newPath}/template.yml');
-      YamlMap templates = confFile["default_preset"]["template_files"];
+      Map<String,dynamic> templates = _toPlainMap(defaultTemplates);
+      templates.updateAll((key, object){
+        if (object is Map) object.remove("path");
+        return object;
+      });
+      final Map<String, dynamic> result = {
+        "template_files": templates
+      };
       if (!templateFile.existsSync()) {
-        
-        templateFile.writeAsStringSync('template_files:${_serializeYaml(templates)}');
+        templateFile.writeAsStringSync(_serializeYamlMap(result));
         print("Created template.yml at $newPath/template.yml. "
             "Edit it to define your templates.");
       }
