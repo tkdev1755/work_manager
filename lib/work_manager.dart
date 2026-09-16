@@ -29,7 +29,7 @@ import 'package:dart_console/dart_console.dart';
 /// End of the structure of the NEW conf.yml file
 
 /// Variable to separate slashes from windows and unix platforms
-String slash = Platform.isWindows ? "\"":"/";
+String slash = Platform.isWindows ? "\\":"/";
 /// Debug variable to enable specific functionalities
 bool DEBUG = bool.fromEnvironment('DEBUG', defaultValue: false);
 /// Debug filepath for the config file for testing
@@ -341,45 +341,6 @@ String getTemplateExportFilename(YamlMap template, String name){
   return applicationTemplateName;
 }
 
-String formatCommand(String command, YamlMap config, Map<String,dynamic>metadata, MapEntry<String,YamlMap> template,MapEntry<String,dynamic> selectedApplication){
-  bool undefinedVariable = false;
-  String errorMessage = "";
-  command = command.replaceAllMapped(variableRegex, (match){
-    String varName = match.group(1)!;
-    List<String> statement = varName.split(".");
-    if (statement.length > 2 || statement.length < 2){
-      undefinedVariable = true;
-      errorMessage = "Syntax error";
-      return "";
-    }
-    if (statement[0] != "self" && !config["template_files"].keys.contains(statement[0])){
-      undefinedVariable = true;
-      errorMessage = "Unable to find the referenced template - Please check export_command for ${template.key} in your conf.yaml file at $confFilePath";
-    }
-    YamlMap referencedTemplate = statement[0] == "self"  ? template.value : config["template_files"][statement[0]];
-    String referencedFilename = getTemplateOutputFilename(referencedTemplate, selectedApplication.value["name"]);
-    String referencedExportFilename = getTemplateExportFilename(referencedTemplate, selectedApplication.value["name"]);
-    String templateFilePath = "${getApplicationsPath(config)}${selectedApplication.key}";
-    switch (statement[1]){
-      case "output_name":
-        return referencedFilename;
-      case "path":
-        return templateFilePath;
-      case "export_name":
-        return referencedExportFilename;
-      default:
-        errorMessage = "Undefined variable name - Please check open_command for ${template.key} in your conf.yml file at $confFilePath";
-        undefinedVariable = true;
-        return "";
-    }
-  });
-  if (undefinedVariable){
-    print(errorMessage);
-    throw Exception(errorMessage);
-  }
-  return "";
-}
-
 /// Parses command-line arguments to extract the preset name for the `create` command.
 ///
 /// Returns the preset name, or `null` if no `--preset` / `-p` flag was provided.
@@ -538,11 +499,14 @@ migrate                   Migrates an old conf.yml to the latest schema""");
 /// Extracts the application name argument from the arguments list,
 /// skipping any preset flags and the preset value.
 String? argsFrom(List<String> arguments) {
-  // Find the first non-flag argument (the application name).
+  // Find the first non-flag argument (the application name), skipping over
+  // `--preset`/`-p` and the value that follows it wherever they appear.
   for (int i = 1; i < arguments.length; i++) {
-    if (arguments[i] != '--preset' && arguments[i] != '-p') {
-      return arguments[i];
+    if (arguments[i] == '--preset' || arguments[i] == '-p') {
+      i++;
+      continue;
     }
+    return arguments[i];
   }
   return null;
 }
@@ -695,30 +659,29 @@ int createApplication(Map<String,dynamic> metadata, String? argument,MapEntry<St
   // Determine which preset to use.
   String effectivePreset;
   YamlMap templates;
+  String? presetFolderPath;
   String applicationsPath = getApplicationsPath(config);
 
-  if (presetName != null) {
+  if (presetName != null && presetName != 'default') {
     // A specific preset was requested.
-    String? presetPath = presets.getPresetPath(config, presetName);
-    if (presetPath == null) {
+    presetFolderPath = presets.getPresetPath(config, presetName);
+    if (presetFolderPath == null) {
       print("Error: Preset '$presetName' not found in conf.yml.");
       return -1;
     }
 
-    // Validate the preset folder and template.yml exist.
+    presets.PresetConfig presetConfig;
     try {
-      presets.loadPresetConfig(presetName, presetPath);
+      presetConfig = presets.loadPresetConfig(presetName, presetFolderPath);
     } catch (e) {
       print("Error loading preset '$presetName': $e");
       return -1;
     }
 
     effectivePreset = presetName;
-    // Load templates from the preset's template.yml.
-    presets.PresetConfig presetConfig = presets.loadPresetConfig(presetName, presetPath);
     templates = presetConfig.templateFiles;
   } else {
-    // No preset specified → use the default preset.
+    // No preset specified, or explicitly "default" → use the default preset.
     effectivePreset = 'default';
     templates = getDefaultTemplateFiles(config);
   }
@@ -739,30 +702,22 @@ int createApplication(Map<String,dynamic> metadata, String? argument,MapEntry<St
 
   for (MapEntry<dynamic,dynamic> template in templates.entries){
     YamlMap templateInfo = template.value as YamlMap;
-    // For the default preset, templates have hardcoded absolute paths.
-    // For other presets, templates don't have a path key (assumed to be in the preset folder).
-    String templatePath;
-    String templateName;
-    if (templateInfo.containsKey("path")) {
-      // Default preset: use the hardcoded path.
-      templatePath = templateInfo["path"].toString();
-      templateName = templateInfo["name"].toString();
-    } else {
-      // Non-default preset: assume templates are in the preset folder.
-      // We need to find the preset folder path.
-      String? presetPath = presets.getPresetPath(config, effectivePreset);
-      if (presetPath == null) {
-        print("Error: Could not resolve path for preset '$effectivePreset'.");
-        return -1;
-      }
-      templatePath = presetPath;
-      templateName = templateInfo["name"].toString();
-    }
-
     if (!templateInfo.containsKey("name")){
       print("Error in config file, please check ${template.key} paths and name");
       return -1;
     }
+    // For the default preset, templates have hardcoded absolute paths.
+    // For other presets, templates don't have a path key (assumed to be in the preset folder).
+    String templatePath;
+    if (templateInfo.containsKey("path")) {
+      templatePath = templateInfo["path"].toString();
+    } else if (presetFolderPath != null) {
+      templatePath = presetFolderPath;
+    } else {
+      print("Error: Could not resolve path for preset '$effectivePreset'.");
+      return -1;
+    }
+    String templateName = templateInfo["name"].toString();
     File originalTemplate = File("${templatePath}$slash$templateName");
     if (!originalTemplate.existsSync()){
       print("Unable to find ${templateName} at path ${templatePath}$slash${templateName}");
@@ -831,11 +786,11 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
         errorMessage = "Syntax error";
         return "";
       }
-      if (statement[0] != "self" && !templates["template_files"].keys.contains(statement[0])){
+      if (statement[0] != "self" && !templates.keys.contains(statement[0])){
         undefinedVariable = true;
         errorMessage = "Unable to find the referenced template - Please check export_command for ${template.key} in your preset's template.yml";
       }
-      YamlMap referencedTemplate = statement[0] == "self"  ? templateInfo : templates["template_files"][statement[0]];
+      YamlMap referencedTemplate = statement[0] == "self"  ? templateInfo : templates[statement[0]];
       String referencedFilename = getTemplateOutputFilename(referencedTemplate, selectedApplication.value["name"]);
       String referencedExportFilename = getTemplateExportFilename(referencedTemplate, selectedApplication.value["name"]);
       String templateFilePath = "${getApplicationsPath(config)}${selectedApplication.key}";

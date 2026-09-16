@@ -137,30 +137,6 @@ PresetConfig loadPresetConfig(String presetName, String presetFolderPath) {
   );
 }
 
-/// Loads the default preset's template definitions from the main conf.yml.
-///
-/// Returns a [PresetConfig] with the default preset's templates.
-/// The default preset's templates have absolute `path` values, so we use
-/// them as-is.
-PresetConfig loadDefaultPresetConfig(YamlMap confFile, String confDirPath) {
-  if (!confFile.containsKey('default_preset')) {
-    throw StateError(
-        "No default_preset defined in conf.yml at $confDirPath.");
-  }
-
-  final YamlMap defaultPreset = confFile['default_preset'];
-  if (!defaultPreset.containsKey('template_files')) {
-    throw StateError(
-        "default_preset in conf.yml must contain a 'template_files' key.");
-  }
-
-  return PresetConfig(
-    presetName: 'default',
-    presetFolderPath: confDirPath,
-    templateFiles: defaultPreset['template_files'],
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Preset management commands
 // ---------------------------------------------------------------------------
@@ -209,35 +185,15 @@ void presetAddCommand(
     String newPath, {
     String? fromPresetName,
   }) {
-  Directory sourceDir;
-  String sourceFolderPath;
+  if (newName == 'default') {
+    print("Error: 'default' is reserved for the default_preset and cannot be used as a preset name.");
+    return;
+  }
 
-  if (fromPresetName != null) {
-    // Copy from an existing preset.
-    final String? existingPath = getPresetPath(confFile, fromPresetName);
-    if (existingPath == null) {
-      // Check if it's the default preset.
-      if (fromPresetName == 'default' && confFile.containsKey('default_preset')) {
-        // The default preset's templates live in the templates/ subdirectory.
-        sourceFolderPath = '${wm.confDirPath}${wm.slash}templates';
-      } else {
-        print("Error: Preset '$fromPresetName' not found in conf.yml.");
-        return;
-      }
-    } else {
-      sourceFolderPath = existingPath;
-    }
-    sourceDir = Directory(sourceFolderPath);
-    if (!sourceDir.existsSync()) {
-      print("Error: Source preset '$fromPresetName' folder does not exist at $sourceFolderPath.");
-      return;
-    }
-  } else {
-    // Create a new preset from scratch (no source).
-    print("Creating a new preset from scratch. "
-        "Place your template files and template.yml in $newPath.");
-    sourceDir = Directory(newPath);
-    sourceFolderPath = newPath;
+  if (listPresets(confFile).any((p) => p.name == newName)) {
+    print("Error: A preset named '$newName' is already registered. "
+        "Remove it first with 'wmanager preset remove $newName' if you want to recreate it.");
+    return;
   }
 
   // Create the destination folder.
@@ -251,30 +207,70 @@ void presetAddCommand(
     }
   }
 
-  if (fromPresetName != null) {
-    if (fromPresetName == "default"){
-      YamlMap defaultTemplates = confFile["default_preset"]["template_files"];
-
-      final File templateFile = File('${newPath}/template.yml');
-      Map<String,dynamic> templates = _toPlainMap(defaultTemplates);
-      templates.updateAll((key, object){
-        if (object is Map) object.remove("path");
-        return object;
-      });
-      final Map<String, dynamic> result = {
-        "template_files": templates
-      };
-      if (!templateFile.existsSync()) {
-        templateFile.writeAsStringSync(_serializeYamlMap(result));
-        print("Created template.yml at $newPath/template.yml. "
-            "Edit it to define your templates.");
-      }
-
+  if (fromPresetName == null) {
+    // Create a new preset from scratch (no source).
+    print("Creating a new preset from scratch. "
+        "Place your template files and template.yml in $newPath.");
+    final File templateFile = File('${newPath}/template.yml');
+    if (!templateFile.existsSync()) {
+      templateFile.writeAsStringSync('template_files:\n');
+      print("Created empty template.yml at $newPath/template.yml. "
+          "Edit it to define your templates.");
     }
+    print("Preset '$newName' created at $newPath.");
+  } else if (fromPresetName == 'default') {
+    if (!confFile.containsKey('default_preset') ||
+        !(confFile['default_preset'] as YamlMap).containsKey('template_files')) {
+      print("Error: No default_preset template_files defined in conf.yml.");
+      return;
+    }
+    final YamlMap defaultTemplates = confFile["default_preset"]["template_files"];
+    final Map<String, dynamic> templates = _toPlainMap(defaultTemplates);
+
+    // Each default template declares its own source `path` - copy those files
+    // individually rather than assuming they all live in one shared folder.
+    for (final entry in templates.entries) {
+      final dynamic templateInfo = entry.value;
+      if (templateInfo is Map && templateInfo.containsKey('path') && templateInfo.containsKey('name')) {
+        final String sourceFile = '${templateInfo['path']}${wm.slash}${templateInfo['name']}';
+        final String destFile = '$newPath${wm.slash}${templateInfo['name']}';
+        try {
+          File(sourceFile).copySync(destFile);
+        } catch (e) {
+          print("Warning: Could not copy $sourceFile: $e");
+        }
+      }
+    }
+
+    // Preset templates don't carry a `path` - it's implied to be the preset folder.
+    templates.updateAll((key, object) {
+      if (object is Map) object.remove("path");
+      return object;
+    });
+
+    final File templateFile = File('${newPath}/template.yml');
+    if (!templateFile.existsSync()) {
+      templateFile.writeAsStringSync(_serializeYamlMap({"template_files": templates}));
+      print("Created template.yml at $newPath/template.yml. "
+          "Edit it to define your templates.");
+    }
+    print("Preset '$newName' created at $newPath (copied from 'default').");
+  } else {
+    // Copy from an existing registered preset.
+    final String? existingPath = getPresetPath(confFile, fromPresetName);
+    if (existingPath == null) {
+      print("Error: Preset '$fromPresetName' not found in conf.yml.");
+      return;
+    }
+    final Directory sourceDir = Directory(existingPath);
+    if (!sourceDir.existsSync()) {
+      print("Error: Source preset '$fromPresetName' folder does not exist at $existingPath.");
+      return;
+    }
+
     // Copy all files from the source preset folder to the destination.
     _copyDirectoryContents(sourceDir, destDir);
 
-    // If the source has a template.yml, copy it (already copied above).
     // If the source doesn't have a template.yml, create an empty one.
     final File destTemplateFile = File('${newPath}/template.yml');
     if (!destTemplateFile.existsSync()) {
@@ -284,15 +280,6 @@ void presetAddCommand(
     }
 
     print("Preset '$newName' created at $newPath (copied from '$fromPresetName').");
-  } else {
-    // Create an empty template.yml.
-    final File templateFile = File('${newPath}/template.yml');
-    if (!templateFile.existsSync()) {
-      templateFile.writeAsStringSync('template_files:\n');
-      print("Created empty template.yml at $newPath/template.yml. "
-          "Edit it to define your templates.");
-    }
-    print("Preset '$newName' created at $newPath.");
   }
 
   // Register the new preset in conf.yml.
@@ -324,11 +311,19 @@ void presetRemoveCommand(YamlMap confFile, String presetName) {
     }
   }
 
-  // Remove from conf.yml.
-  presetsMap.remove(presetName);
+  // YamlMap is unmodifiable, so remove the entry on a plain-map copy before writing back.
+  final Map<String, dynamic> plainConf = _toPlainMap(confFile);
+  final Map<String, dynamic> plainPresets = plainConf['presets'] is Map<String, dynamic>
+      ? Map<String, dynamic>.from(plainConf['presets'] as Map<String, dynamic>)
+      : <String, dynamic>{};
+  plainPresets.remove(presetName);
+  plainConf['presets'] = plainPresets;
 
-  // Write back to conf.yml.
-  _updateConfFile(confFile, wm.confFilePath);
+  try {
+    File(wm.confFilePath).writeAsStringSync(_serializeYamlMap(plainConf));
+  } catch (e) {
+    throw Exception("Failed to write updated conf.yml to ${wm.confFilePath}: $e");
+  }
 
   print("Preset '$presetName' removed.");
 }
@@ -401,39 +396,6 @@ dynamic _toPlainValue(dynamic node) {
     return node.map(_toPlainValue).toList();
   }
   return node;
-}
-
-/// Serializes a YamlMap back to a YAML string.
-String _serializeYaml(YamlMap yaml) {
-  final StringBuffer sb = StringBuffer();
-  _serializeNode(sb, yaml, indent: 0);
-  return sb.toString();
-}
-
-void _serializeNode(StringBuffer sb, dynamic node, {int indent = 0}) {
-  final String pad = '  ' * indent;
-
-  if (node is YamlMap) {
-    if (node.isEmpty) {
-      sb.write('{}');
-      return;
-    }
-    for (final entry in node.entries) {
-      sb.writeln('${pad}${_toYamlKey(entry.key)}:');
-      _serializeNode(sb, entry.value, indent: indent + 1);
-    }
-  } else if (node is YamlList) {
-    if (node.isEmpty) {
-      sb.write('[]');
-      return;
-    }
-    for (final item in node) {
-      sb.writeln('${pad}-');
-      _serializeNode(sb, item, indent: indent + 1);
-    }
-  } else {
-    sb.write(_toYamlValue(node));
-  }
 }
 
 /// Serializes a plain Map to a YAML string (handles empty maps inline).
