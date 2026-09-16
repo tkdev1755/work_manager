@@ -311,7 +311,6 @@ String getTemplateOutputFilename(YamlMap template, String name){
 
 
 String getCurrentApplicationName(Map<String,dynamic> metadata, MapEntry<String,dynamic> loadedApplication){
-  print(loadedApplication);
   String applicationName = loadedApplication.value["name"];
   return applicationName;
 }
@@ -417,7 +416,13 @@ migrate                   Migrates an old conf.yml to the latest schema""");
       needsUpdate = exitCode == 0;
       break;
     case openCommand:
-      exitCode = openApplicationFile(metadataFile,confFile,argsFrom(arguments),selectedApplication);
+      switch (openApplicationFile(metadataFile,confFile,argsFrom(arguments),selectedApplication)) {
+        case Ok():
+          exitCode = 0;
+        case Err(message: final message):
+          print(message);
+          exitCode = -1;
+      }
       needsUpdate = false;
       break;
     case createCommand:
@@ -433,11 +438,28 @@ migrate                   Migrates an old conf.yml to the latest schema""");
       needsUpdate = exitCode == 0;
       break;
     case exportCommand:
-      exitCode = exportApplication(metadataFile,confFile,selectedApplication);
+      switch (exportApplication(metadataFile,confFile,selectedApplication)) {
+        case Ok(value: final result):
+          for (final file in result.exported) {
+            print("Exported ${file.templateKey} -> ${file.exportedPath}");
+          }
+          exitCode = 0;
+        case Err(message: final message):
+          print(message);
+          exitCode = -1;
+      }
       needsUpdate = false;
       break;
     case currentCommand:
-      exitCode = currentApplication(metadataFile, confFile, selectedApplication);
+      switch (currentApplication(metadataFile, confFile, selectedApplication)) {
+        case Ok(value: final info):
+          String presetSuffix = info.preset != null ? " Preset : ${info.preset}" : "";
+          print("Current application info - \n  Name : ${info.name} \n  Folder : ${info.folder}$presetSuffix");
+          exitCode = 0;
+        case Err(message: final message):
+          print(message);
+          exitCode = -1;
+      }
       needsUpdate = false;
       break;
     case presetCommand:
@@ -750,10 +772,9 @@ OperationResult<CreateApplicationResult> createApplication(Map<String,dynamic> m
 /// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file
 ///
 /// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
-int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<String,dynamic>? selectedApplication){
+OperationResult<ExportResult> exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<String,dynamic>? selectedApplication){
   if (selectedApplication == null){
-    print("No applications is loaded, try loading one with : wmanager load");
-    return -1;
+    return const Err("No applications is loaded, try loading one with : wmanager load");
   }
 
   // Look up the preset name from the application metadata.
@@ -772,25 +793,23 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
     // Load templates from the preset's template.yml.
     String? presetPath = presets.getPresetPath(config, presetName);
     if (presetPath == null) {
-      print("Error: Preset '$presetName' referenced by this application not found in conf.yml.");
-      return -1;
+      return Err("Preset '$presetName' referenced by this application not found in conf.yml.");
     }
     try {
       presets.PresetConfig presetConfig = presets.loadPresetConfig(presetName, presetPath);
       templates = presetConfig.templateFiles;
     } catch (e) {
-      print("Error loading preset '$presetName' for export: $e");
-      return -1;
+      return Err("Error loading preset '$presetName' for export: $e");
     }
   }
 
+  List<ExportedTemplateFile> exportedFiles = [];
   for (var template in templates.entries){
     YamlMap templateInfo = template.value as YamlMap;
     if (templateInfo.containsKey("is_asset") && templateInfo["is_asset"]){
       continue;
     }
     String exportCommand = getTemplateExportCommand(templateInfo);
-    print("Exporting template : ${template.key}");
     bool undefinedVariable = false;
     String errorMessage = "";
     exportCommand = exportCommand.replaceAllMapped(variableRegex, (match){
@@ -823,8 +842,7 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
       }
     });
     if (undefinedVariable){
-      print(errorMessage);
-      return -1;
+      return Err(errorMessage);
     }
 
     List<String> args = parseCommand(exportCommand);
@@ -832,21 +850,23 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
 
     ProcessResult res = Process.runSync(args[0], args.sublist(1), workingDirectory: applicationPath);
     if (res.exitCode != 0){
-      print("There was an error while exporting ${template.key}, details :\n${res.stderr}");
-      return -1;
+      return Err("There was an error while exporting ${template.key}, details :\n${res.stderr}");
     }
     String templateExportFilename = getTemplateExportFilename(templateInfo, selectedApplication.value["name"]);
     File exportedFile = File("$applicationPath$slash$templateExportFilename");
     if (!exportedFile.existsSync()){
-      print("The exported file cannot be found at $applicationPath, please check if your command produces a output file with the name specified in your config.yml file");
-      logger("Filename is $exportedFile");
-      return -1;
+      return Err("The exported file cannot be found at $applicationPath, please check if your command produces a output file with the name specified in your config.yml file");
     }
     String exportPath = getExportPath(config);
     logger("Now copying file to $exportPath$templateExportFilename");
-    exportedFile.copySync("$exportPath$templateExportFilename");
+    String copiedExportPath = "$exportPath$templateExportFilename";
+    exportedFile.copySync(copiedExportPath);
+    exportedFiles.add(ExportedTemplateFile(
+      templateKey: template.key.toString(),
+      exportedPath: copiedExportPath,
+    ));
   }
-  return 0;
+  return Ok(ExportResult(applicationId: selectedApplication.key, exported: exportedFiles));
 }
 
 /// Function which opens a specific template based on the user input
@@ -854,14 +874,12 @@ int exportApplication(Map<String,dynamic> metadata,YamlMap config ,MapEntry<Stri
 /// Takes a Map representing the metadata file, a YamlMap representing the config file, a String? which is the template name argument, and MapEntry<String,dynamic>? which is the selected application
 ///
 /// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
-int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? args, MapEntry<String,dynamic>? selectedApplication){
+OperationResult<OpenResult> openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? args, MapEntry<String,dynamic>? selectedApplication){
   if (args == null){
-    print("Missing argument for open command, Usage : wmanager open <template_name>");
-    return -1;
+    return const Err("Missing argument for open command, Usage : wmanager open <template_name>");
   }
   if (selectedApplication == null || !selectedApplication.value.containsKey("name")){
-    print("No applications loaded at the moment, please load one with the command : \nwmanager load");
-    return -1;
+    return const Err("No applications loaded at the moment, please load one with the command : \nwmanager load");
   }
 
   // Look up the preset name from the application metadata.
@@ -876,20 +894,17 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
   YamlMap templates;
   if (presetName == 'default') {
     templates = getDefaultTemplateFiles(config);
-    print("Templates : ${templates}");
   } else {
     // Load templates from the preset's template.yml.
     String? presetPath = presets.getPresetPath(config, presetName);
     if (presetPath == null) {
-      print("Error: Preset '$presetName' referenced by this application not found in conf.yml.");
-      return -1;
+      return Err("Preset '$presetName' referenced by this application not found in conf.yml.");
     }
     try {
       presets.PresetConfig presetConfig = presets.loadPresetConfig(presetName, presetPath);
       templates = presetConfig.templateFiles;
     } catch (e) {
-      print("Error loading preset '$presetName' for open: $e");
-      return -1;
+      return Err("Error loading preset '$presetName' for open: $e");
     }
   }
 
@@ -925,8 +940,7 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
       }
     });
     if (undefinedVariable){
-      print(errorMessage);
-      return -1;
+      return Err(errorMessage);
     }
     logger("Current command is $command");
     List<String> commandAndArgs = command.split(" ");
@@ -934,14 +948,13 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
     logger("DEBUG ONLY : ${res.stdout}");
     logger("\t ${res.stderr}");
     if (res.exitCode != 0){
-      return -1;
+      return Err("The open command for '$args' exited with a non-zero status.");
     }
+    return Ok(OpenResult(templateKey: args, command: command));
   }
   catch (e) {
-    print("The searched template doesn't exists, linked error : ${e.toString()}");
-    return -1;
+    return Err("The searched template doesn't exists, linked error : ${e.toString()}");
   }
-  return 0;
 }
 
 /// Function which displays the loaded application in the app
@@ -949,19 +962,19 @@ int openApplicationFile(Map<String,dynamic> metadata, YamlMap config, String? ar
 /// Takes a Map representing the metadata file, a YamlMap representing the config file and MapEntry<String,dynamic>? which is the selected application
 ///
 /// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
-int currentApplication(Map<String,dynamic> metadata, YamlMap config, MapEntry<String,dynamic>? selectedApplication){
+OperationResult<CurrentApplicationInfo> currentApplication(Map<String,dynamic> metadata, YamlMap config, MapEntry<String,dynamic>? selectedApplication){
   if (selectedApplication == null){
-    print("No applications loaded at the moment, please load one with the command : \nwmanager load");
-    return -1;
+    return const Err("No applications loaded at the moment, please load one with the command : \nwmanager load");
   }
   String applicationPath = getApplicationsPath(config);
   String applicationName = getCurrentApplicationName(metadata, selectedApplication);
-  String presetInfo = "";
-  if (selectedApplication.value.containsKey("preset") && selectedApplication.value["preset"] != null) {
-    presetInfo = " Preset : ${selectedApplication.value["preset"]}";
-  }
-  print("Current application info - \n  Name : $applicationName \n  Folder : $applicationPath$slash${selectedApplication.key}$presetInfo");
-  return 0;
+  String? preset = selectedApplication.value.containsKey("preset") ? selectedApplication.value["preset"] : null;
+  return Ok(CurrentApplicationInfo(
+    id: selectedApplication.key,
+    name: applicationName,
+    folder: "$applicationPath$slash${selectedApplication.key}",
+    preset: preset,
+  ));
 }
 
 int analyzeApplication(Map<String,dynamic> metadata, YamlMap config, MapEntry<String,dynamic>? selectedApplication){

@@ -47,3 +47,49 @@ class CreateApplicationResult {
     required this.files,
   });
 }
+
+/// A single template file that was exported and copied to the export folder.
+class ExportedTemplateFile {
+  final String templateKey;
+  final String exportedPath;
+
+  const ExportedTemplateFile({
+    required this.templateKey,
+    required this.exportedPath,
+  });
+}
+
+class ExportResult {
+  final String applicationId;
+  final List<ExportedTemplateFile> exported;
+
+  const ExportResult({
+    required this.applicationId,
+    required this.exported,
+  });
+}
+
+/// Outcome of running a template's `open_command`.
+class OpenResult {
+  final String templateKey;
+  final String command;
+
+  const OpenResult({
+    required this.templateKey,
+    required this.command,
+  });
+}
+
+class CurrentApplicationInfo {
+  final String id;
+  final String name;
+  final String folder;
+  final String? preset;
+
+  const CurrentApplicationInfo({
+    required this.id,
+    required this.name,
+    required this.folder,
+    this.preset,
+  });
+}
