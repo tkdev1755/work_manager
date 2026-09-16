@@ -5,6 +5,7 @@ import 'package:uuid/v6.dart';
 import 'package:work_manager/extensions.dart';
 import 'package:work_manager/migration.dart' as migration;
 import 'package:work_manager/presets.dart' as presets;
+import 'package:work_manager/results.dart';
 import 'package:yaml/yaml.dart';
 import 'package:dart_console/dart_console.dart';
 
@@ -421,7 +422,14 @@ migrate                   Migrates an old conf.yml to the latest schema""");
       break;
     case createCommand:
       String? presetName = parsePresetArg(arguments);
-      exitCode = createApplication(metadataFile, argsFrom(arguments), selectedApplication, confFile, presetName);
+      switch (createApplication(metadataFile, argsFrom(arguments), selectedApplication, confFile, presetName)) {
+        case Ok(value: final result):
+          print("Application '${result.name}' created with id ${result.id} (preset: ${result.preset}).");
+          exitCode = 0;
+        case Err(message: final message):
+          print(message);
+          exitCode = -1;
+      }
       needsUpdate = exitCode == 0;
       break;
     case exportCommand:
@@ -646,10 +654,9 @@ int loadApplication(Map<String,dynamic> metadata, MapEntry<String,dynamic>? sele
 /// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file
 ///
 /// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
-int createApplication(Map<String,dynamic> metadata, String? argument,MapEntry<String,dynamic>? selectedApplication, YamlMap config, [String? presetName]){
+OperationResult<CreateApplicationResult> createApplication(Map<String,dynamic> metadata, String? argument,MapEntry<String,dynamic>? selectedApplication, YamlMap config, [String? presetName]){
   if (argument == null){
-    print("Wrong usage : wmanager create <Application Name> [--preset <preset_name>]");
-    return -1;
+    return const Err("Wrong usage : wmanager create <Application Name> [--preset <preset_name>]");
   }
   if (!metadata.containsKey("applications")) metadata["applications"] = {};
 
@@ -666,16 +673,14 @@ int createApplication(Map<String,dynamic> metadata, String? argument,MapEntry<St
     // A specific preset was requested.
     presetFolderPath = presets.getPresetPath(config, presetName);
     if (presetFolderPath == null) {
-      print("Error: Preset '$presetName' not found in conf.yml.");
-      return -1;
+      return Err("Preset '$presetName' not found in conf.yml.");
     }
 
     presets.PresetConfig presetConfig;
     try {
       presetConfig = presets.loadPresetConfig(presetName, presetFolderPath);
     } catch (e) {
-      print("Error loading preset '$presetName': $e");
-      return -1;
+      return Err("Error loading preset '$presetName': $e");
     }
 
     effectivePreset = presetName;
@@ -700,11 +705,11 @@ int createApplication(Map<String,dynamic> metadata, String? argument,MapEntry<St
     currentApplicationDir.createSync(recursive: true);
   }
 
+  List<CreatedTemplateFile> createdFiles = [];
   for (MapEntry<dynamic,dynamic> template in templates.entries){
     YamlMap templateInfo = template.value as YamlMap;
     if (!templateInfo.containsKey("name")){
-      print("Error in config file, please check ${template.key} paths and name");
-      return -1;
+      return Err("Error in config file, please check ${template.key} paths and name");
     }
     // For the default preset, templates have hardcoded absolute paths.
     // For other presets, templates don't have a path key (assumed to be in the preset folder).
@@ -714,20 +719,30 @@ int createApplication(Map<String,dynamic> metadata, String? argument,MapEntry<St
     } else if (presetFolderPath != null) {
       templatePath = presetFolderPath;
     } else {
-      print("Error: Could not resolve path for preset '$effectivePreset'.");
-      return -1;
+      return Err("Could not resolve path for preset '$effectivePreset'.");
     }
     String templateName = templateInfo["name"].toString();
     File originalTemplate = File("${templatePath}$slash$templateName");
     if (!originalTemplate.existsSync()){
-      print("Unable to find ${templateName} at path ${templatePath}$slash${templateName}");
-      return -1;
+      return Err("Unable to find ${templateName} at path ${templatePath}$slash${templateName}");
     }
-    String applicationSpecificTemplateName = isAsset(templateInfo) ? templateName : getTemplateOutputFilename(templateInfo, applicationName);
-    originalTemplate.copySync("${currentApplicationDir.path}$slash$applicationSpecificTemplateName");
+    bool templateIsAsset = isAsset(templateInfo);
+    String applicationSpecificTemplateName = templateIsAsset ? templateName : getTemplateOutputFilename(templateInfo, applicationName);
+    String copiedFilePath = "${currentApplicationDir.path}$slash$applicationSpecificTemplateName";
+    originalTemplate.copySync(copiedFilePath);
+    createdFiles.add(CreatedTemplateFile(
+      templateKey: template.key.toString(),
+      path: copiedFilePath,
+      isAsset: templateIsAsset,
+    ));
   }
   loadApplication(metadata, selectedApplication, applicationID);
-  return 0;
+  return Ok(CreateApplicationResult(
+    id: applicationID,
+    name: applicationName,
+    preset: effectivePreset,
+    files: createdFiles,
+  ));
 }
 
 /// Function which exports the loaded applications to the export_path
