@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'package:work_manager/extensions.dart';
 import 'package:yaml/yaml.dart';
 import 'package:work_manager/work_manager.dart' as wm;
+import 'package:work_manager/results.dart';
 
 
 /// ---------------------------------------------------------------------------
@@ -78,7 +78,6 @@ List<PresetEntry> listPresets(YamlMap confFile) {
 String? getPresetPath(YamlMap confFile, String presetName) {
   if (!confFile.containsKey('presets')) return null;
   final YamlMap presetsMap = confFile['presets'];
-  logger("preset map ${presetsMap}");
   if (!presetsMap.containsKey(presetName)) return null;
   final dynamic value = presetsMap[presetName];
   if (value is YamlMap && value.containsKey('path')) {
@@ -179,21 +178,19 @@ void presetListCommand(YamlMap confFile) {
 /// 2. Creates the destination folder (if it doesn't exist).
 /// 3. Copies all files from the source preset folder to the destination.
 /// 4. Updates the main conf.yml to register the new preset.
-void presetAddCommand(
+OperationResult<PresetEntry> presetAddCommand(
     YamlMap confFile,
     String newName,
     String newPath, {
     String? fromPresetName,
   }) {
   if (newName == 'default') {
-    print("Error: 'default' is reserved for the default_preset and cannot be used as a preset name.");
-    return;
+    return const Err("'default' is reserved for the default_preset and cannot be used as a preset name.");
   }
 
   if (listPresets(confFile).any((p) => p.name == newName)) {
-    print("Error: A preset named '$newName' is already registered. "
+    return Err("A preset named '$newName' is already registered. "
         "Remove it first with 'wmanager preset remove $newName' if you want to recreate it.");
-    return;
   }
 
   // Create the destination folder.
@@ -202,33 +199,27 @@ void presetAddCommand(
     try {
       destDir.createSync(recursive: true);
     } catch (e) {
-      print("Error: Could not create directory $newPath: $e");
-      return;
+      return Err("Could not create directory $newPath: $e");
     }
   }
 
   if (fromPresetName == null) {
     // Create a new preset from scratch (no source).
-    print("Creating a new preset from scratch. "
-        "Place your template files and template.yml in $newPath.");
     final File templateFile = File('${newPath}/template.yml');
     if (!templateFile.existsSync()) {
       templateFile.writeAsStringSync('template_files:\n');
-      print("Created empty template.yml at $newPath/template.yml. "
-          "Edit it to define your templates.");
     }
-    print("Preset '$newName' created at $newPath.");
   } else if (fromPresetName == 'default') {
     if (!confFile.containsKey('default_preset') ||
         !(confFile['default_preset'] as YamlMap).containsKey('template_files')) {
-      print("Error: No default_preset template_files defined in conf.yml.");
-      return;
+      return const Err("No default_preset template_files defined in conf.yml.");
     }
     final YamlMap defaultTemplates = confFile["default_preset"]["template_files"];
     final Map<String, dynamic> templates = _toPlainMap(defaultTemplates);
 
     // Each default template declares its own source `path` - copy those files
     // individually rather than assuming they all live in one shared folder.
+    List<String> copyWarnings = [];
     for (final entry in templates.entries) {
       final dynamic templateInfo = entry.value;
       if (templateInfo is Map && templateInfo.containsKey('path') && templateInfo.containsKey('name')) {
@@ -237,9 +228,12 @@ void presetAddCommand(
         try {
           File(sourceFile).copySync(destFile);
         } catch (e) {
-          print("Warning: Could not copy $sourceFile: $e");
+          copyWarnings.add("Could not copy $sourceFile: $e");
         }
       }
+    }
+    if (copyWarnings.isNotEmpty) {
+      return Err(copyWarnings.join('\n'));
     }
 
     // Preset templates don't carry a `path` - it's implied to be the preset folder.
@@ -251,52 +245,45 @@ void presetAddCommand(
     final File templateFile = File('${newPath}/template.yml');
     if (!templateFile.existsSync()) {
       templateFile.writeAsStringSync(_serializeYamlMap({"template_files": templates}));
-      print("Created template.yml at $newPath/template.yml. "
-          "Edit it to define your templates.");
     }
-    print("Preset '$newName' created at $newPath (copied from 'default').");
   } else {
     // Copy from an existing registered preset.
     final String? existingPath = getPresetPath(confFile, fromPresetName);
     if (existingPath == null) {
-      print("Error: Preset '$fromPresetName' not found in conf.yml.");
-      return;
+      return Err("Preset '$fromPresetName' not found in conf.yml.");
     }
     final Directory sourceDir = Directory(existingPath);
     if (!sourceDir.existsSync()) {
-      print("Error: Source preset '$fromPresetName' folder does not exist at $existingPath.");
-      return;
+      return Err("Source preset '$fromPresetName' folder does not exist at $existingPath.");
     }
 
     // Copy all files from the source preset folder to the destination.
-    _copyDirectoryContents(sourceDir, destDir);
+    final List<String> copyWarnings = _copyDirectoryContents(sourceDir, destDir);
+    if (copyWarnings.isNotEmpty) {
+      return Err(copyWarnings.join('\n'));
+    }
 
     // If the source doesn't have a template.yml, create an empty one.
     final File destTemplateFile = File('${newPath}/template.yml');
     if (!destTemplateFile.existsSync()) {
       destTemplateFile.writeAsStringSync('template_files:\n');
-      print("Created empty template.yml at $newPath/template.yml. "
-          "Edit it to define your templates.");
     }
-
-    print("Preset '$newName' created at $newPath (copied from '$fromPresetName').");
   }
 
   // Register the new preset in conf.yml.
   _registerPresetInConfFile(confFile, newName, newPath);
+  return Ok(PresetEntry(name: newName, path: newPath));
 }
 
 /// Removes a preset from conf.yml and deletes its folder.
-void presetRemoveCommand(YamlMap confFile, String presetName) {
+OperationResult<PresetEntry> presetRemoveCommand(YamlMap confFile, String presetName) {
   if (!confFile.containsKey('presets')) {
-    print("Error: No presets defined in conf.yml.");
-    return;
+    return const Err("No presets defined in conf.yml.");
   }
 
   final YamlMap presetsMap = confFile['presets'];
   if (!presetsMap.containsKey(presetName)) {
-    print("Error: Preset '$presetName' not found.");
-    return;
+    return Err("Preset '$presetName' not found.");
   }
 
   final String presetPath = presetsMap[presetName]['path'].toString();
@@ -307,7 +294,7 @@ void presetRemoveCommand(YamlMap confFile, String presetName) {
     try {
       presetDir.deleteSync(recursive: true);
     } catch (e) {
-      print("Warning: Could not delete preset folder at $presetPath: $e");
+      return Err("Could not delete preset folder at $presetPath: $e");
     }
   }
 
@@ -322,18 +309,20 @@ void presetRemoveCommand(YamlMap confFile, String presetName) {
   try {
     File(wm.confFilePath).writeAsStringSync(_serializeYamlMap(plainConf));
   } catch (e) {
-    throw Exception("Failed to write updated conf.yml to ${wm.confFilePath}: $e");
+    return Err("Failed to write updated conf.yml to ${wm.confFilePath}: $e");
   }
 
-  print("Preset '$presetName' removed.");
+  return Ok(PresetEntry(name: presetName, path: presetPath));
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/// Copies all contents from [sourceDir] to [destDir].
-void _copyDirectoryContents(Directory sourceDir, Directory destDir) {
+/// Copies all contents from [sourceDir] to [destDir]. Returns a list of
+/// warning messages for any file that failed to copy (copying continues).
+List<String> _copyDirectoryContents(Directory sourceDir, Directory destDir) {
+  final List<String> warnings = [];
   for (final entity in sourceDir.listSync(recursive: true)) {
     final String relativePath = entity.path.substring(sourceDir.path.length + 1);
     final String destPath = '${destDir.path}/$relativePath';
@@ -342,10 +331,11 @@ void _copyDirectoryContents(Directory sourceDir, Directory destDir) {
       try {
         entity.copySync(destPath);
       } catch (e) {
-        print("Warning: Could not copy ${entity.path}: $e");
+        warnings.add("Could not copy ${entity.path}: $e");
       }
     }
   }
+  return warnings;
 }
 
 /// Registers a preset in the main conf.yml under the `presets` key.
@@ -360,20 +350,8 @@ void _registerPresetInConfFile(YamlMap confFile, String name, String path) {
 
   try {
     File(wm.confFilePath).writeAsStringSync(_serializeYamlMap(plainConf));
-    print("Preset '$name' registered in conf.yml.");
   } catch (e) {
     throw Exception("Failed to write updated conf.yml to ${wm.confFilePath}: $e");
-  }
-}
-
-/// Writes the updated conf.yml back to disk.
-void _updateConfFile(YamlMap confFile, String configPath) {
-  try {
-    // Convert to plain Map and serialize (handles empty maps correctly).
-    final Map<String, dynamic> plainMap = _toPlainMap(confFile);
-    File(configPath).writeAsStringSync(_serializeYamlMap(plainMap));
-  } catch (e) {
-    throw Exception("Failed to write updated conf.yml to $configPath: $e");
   }
 }
 

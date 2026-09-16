@@ -487,9 +487,15 @@ migrate                   Migrates an old conf.yml to the latest schema""");
           String presetName = arguments[2];
           String presetPath = arguments[3];
           String? fromPreset = parseFromArg(arguments);
-          presets.presetAddCommand(confFile, presetName, presetPath, fromPresetName: fromPreset);
+          switch (presets.presetAddCommand(confFile, presetName, presetPath, fromPresetName: fromPreset)) {
+            case Ok(value: final preset):
+              print("Preset '${preset.name}' created at ${preset.path}.");
+              exitCode = 0;
+            case Err(message: final message):
+              print(message);
+              exitCode = -1;
+          }
           needsUpdate = false;
-          exitCode = 0;
           break;
         case 'remove':
           if (arguments.length < 3) {
@@ -499,9 +505,15 @@ migrate                   Migrates an old conf.yml to the latest schema""");
             break;
           }
           String removePresetName = arguments[2];
-          presets.presetRemoveCommand(confFile, removePresetName);
+          switch (presets.presetRemoveCommand(confFile, removePresetName)) {
+            case Ok(value: final preset):
+              print("Preset '${preset.name}' removed.");
+              exitCode = 0;
+            case Err(message: final message):
+              print(message);
+              exitCode = -1;
+          }
           needsUpdate = false;
-          exitCode = 0;
           break;
         default:
           print("Unknown preset subcommand: $subCommand");
@@ -583,7 +595,7 @@ int deleteApplication(String applicationID, String applicationsDirectory,Map<Str
 /// Returns an int based on the result of the operation, 0 if everything went well, -1 if not
 int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? selectedApplication, YamlMap config){
   bool hasSelectedApplication = false;
-  if (!metadata.containsKey("applications")) metadata["applications"] = {};
+  if (!metadata.containsKey("applications")) metadata["applications"] = <String,dynamic>{};
   Map<String,dynamic> applications = metadata["applications"];
   List applicationsValues = applications.entries.toList();
   int selectedIndex = 0;
@@ -671,6 +683,64 @@ int loadApplication(Map<String,dynamic> metadata, MapEntry<String,dynamic>? sele
   return 0;
 }
 
+/// Lists every known application from the metadata file, without touching
+/// the filesystem. Used by callers (like the MCP server) that need to let an
+/// agent discover existing applications without driving the interactive
+/// `load` menu.
+List<ApplicationSummary> listApplications(Map<String,dynamic> metadata) {
+  if (!metadata.containsKey("applications")) return [];
+  Map<String,dynamic> applications = metadata["applications"];
+  return applications.entries.map((entry) {
+    Map<String,dynamic> info = entry.value as Map<String,dynamic>;
+    return ApplicationSummary(
+      id: entry.key,
+      name: info["name"] as String,
+      creationDate: info["creationDate"] as String,
+      preset: info["preset"] as String?,
+    );
+  }).toList();
+}
+
+/// Loads an application by id and returns its info, validating that the id
+/// actually exists first (unlike [loadApplication], which assumes a valid
+/// id already picked from a menu).
+OperationResult<CurrentApplicationInfo> loadApplicationById(Map<String,dynamic> metadata, MapEntry<String,dynamic>? selectedApplication, YamlMap config, String applicationID) {
+  if (!metadata.containsKey("applications") || !(metadata["applications"] as Map).containsKey(applicationID)) {
+    return Err("Application '$applicationID' not found.");
+  }
+  loadApplication(metadata, selectedApplication, applicationID);
+  MapEntry<String,dynamic> loaded = MapEntry(applicationID, metadata["applications"][applicationID] as Map<String,dynamic>);
+  return currentApplication(metadata, config, loaded);
+}
+
+/// Resolves the on-disk path of a specific template file for an already
+/// created application, without running its `open_command`/`export_command`.
+/// Lets a caller (like the MCP server) read or write the file directly with
+/// its own generic file tools.
+OperationResult<CreatedTemplateFile> resolveTemplatePath(YamlMap config, MapEntry<String,dynamic> selectedApplication, String templateKey) {
+  YamlMap templates;
+  switch (resolveTemplatesForPreset(config, presetNameOf(selectedApplication))) {
+    case Ok(value: final resolved):
+      templates = resolved;
+    case Err(message: final message):
+      return Err(message);
+  }
+
+  YamlMap templateInfo;
+  try {
+    templateInfo = getTemplateInfo(templates, templateKey);
+  } catch (e) {
+    return Err("Template '$templateKey' doesn't exist for this application's preset.");
+  }
+
+  bool templateIsAsset = isAsset(templateInfo);
+  String filename = templateIsAsset
+      ? templateInfo["name"].toString()
+      : getTemplateOutputFilename(templateInfo, selectedApplication.value["name"]);
+  String path = "${getApplicationsPath(config)}${selectedApplication.key}$slash$filename";
+  return Ok(CreatedTemplateFile(templateKey: templateKey, path: path, isAsset: templateIsAsset));
+}
+
 /// Function which creates an application following passed by the user
 ///
 /// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file
@@ -680,7 +750,7 @@ OperationResult<CreateApplicationResult> createApplication(Map<String,dynamic> m
   if (argument == null){
     return const Err("Wrong usage : wmanager create <Application Name> [--preset <preset_name>]");
   }
-  if (!metadata.containsKey("applications")) metadata["applications"] = {};
+  if (!metadata.containsKey("applications")) metadata["applications"] = <String,dynamic>{};
 
   String applicationID = getApplicationID(metadata.keys.toList(),argument);
   String applicationName = argument;
@@ -767,6 +837,35 @@ OperationResult<CreateApplicationResult> createApplication(Map<String,dynamic> m
   ));
 }
 
+/// Returns the preset name recorded against an application, falling back to
+/// `'default'` for metadata written before presets existed.
+String presetNameOf(MapEntry<String,dynamic> selectedApplication) {
+  if (selectedApplication.value.containsKey("preset") && selectedApplication.value["preset"] != null) {
+    return selectedApplication.value["preset"] as String;
+  }
+  return 'default';
+}
+
+/// Resolves the `template_files` map for a given preset name, whether it's
+/// `'default'` (read straight from `conf.yml`) or a registered preset (read
+/// from that preset's `template.yml`). Shared by every operation that needs
+/// to look up a template definition for an already-created application.
+OperationResult<YamlMap> resolveTemplatesForPreset(YamlMap config, String presetName) {
+  if (presetName == 'default') {
+    return Ok(getDefaultTemplateFiles(config));
+  }
+  String? presetPath = presets.getPresetPath(config, presetName);
+  if (presetPath == null) {
+    return Err("Preset '$presetName' referenced by this application not found in conf.yml.");
+  }
+  try {
+    presets.PresetConfig presetConfig = presets.loadPresetConfig(presetName, presetPath);
+    return Ok(presetConfig.templateFiles);
+  } catch (e) {
+    return Err("Error loading preset '$presetName': $e");
+  }
+}
+
 /// Function which exports the loaded applications to the export_path
 ///
 /// Takes a Map representing the metadata file, a Map representing the loaded application and a YamlMap object representing the config file
@@ -777,30 +876,12 @@ OperationResult<ExportResult> exportApplication(Map<String,dynamic> metadata,Yam
     return const Err("No applications is loaded, try loading one with : wmanager load");
   }
 
-  // Look up the preset name from the application metadata.
-  String presetName;
-  if (selectedApplication.value.containsKey("preset") && selectedApplication.value["preset"] != null) {
-    presetName = selectedApplication.value["preset"] as String;
-  } else {
-    // Fallback: no preset stored, use default (backward compatibility with old metadata).
-    presetName = 'default';
-  }
-
   YamlMap templates;
-  if (presetName == 'default') {
-    templates = getDefaultTemplateFiles(config);
-  } else {
-    // Load templates from the preset's template.yml.
-    String? presetPath = presets.getPresetPath(config, presetName);
-    if (presetPath == null) {
-      return Err("Preset '$presetName' referenced by this application not found in conf.yml.");
-    }
-    try {
-      presets.PresetConfig presetConfig = presets.loadPresetConfig(presetName, presetPath);
-      templates = presetConfig.templateFiles;
-    } catch (e) {
-      return Err("Error loading preset '$presetName' for export: $e");
-    }
+  switch (resolveTemplatesForPreset(config, presetNameOf(selectedApplication))) {
+    case Ok(value: final resolved):
+      templates = resolved;
+    case Err(message: final message):
+      return Err(message);
   }
 
   List<ExportedTemplateFile> exportedFiles = [];
@@ -882,30 +963,12 @@ OperationResult<OpenResult> openApplicationFile(Map<String,dynamic> metadata, Ya
     return const Err("No applications loaded at the moment, please load one with the command : \nwmanager load");
   }
 
-  // Look up the preset name from the application metadata.
-  String presetName;
-  if (selectedApplication.value.containsKey("preset") && selectedApplication.value["preset"] != null) {
-    presetName = selectedApplication.value["preset"] as String;
-  } else {
-    // Fallback: no preset stored, use default (backward compatibility with old metadata).
-    presetName = 'default';
-  }
-
   YamlMap templates;
-  if (presetName == 'default') {
-    templates = getDefaultTemplateFiles(config);
-  } else {
-    // Load templates from the preset's template.yml.
-    String? presetPath = presets.getPresetPath(config, presetName);
-    if (presetPath == null) {
-      return Err("Preset '$presetName' referenced by this application not found in conf.yml.");
-    }
-    try {
-      presets.PresetConfig presetConfig = presets.loadPresetConfig(presetName, presetPath);
-      templates = presetConfig.templateFiles;
-    } catch (e) {
-      return Err("Error loading preset '$presetName' for open: $e");
-    }
+  switch (resolveTemplatesForPreset(config, presetNameOf(selectedApplication))) {
+    case Ok(value: final resolved):
+      templates = resolved;
+    case Err(message: final message):
+      return Err(message);
   }
 
   try {

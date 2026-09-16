@@ -93,3 +93,19 @@ class CurrentApplicationInfo {
     this.preset,
   });
 }
+
+/// A lightweight summary of an application, as listed from the metadata file
+/// (no filesystem access).
+class ApplicationSummary {
+  final String id;
+  final String name;
+  final String creationDate;
+  final String? preset;
+
+  const ApplicationSummary({
+    required this.id,
+    required this.name,
+    required this.creationDate,
+    this.preset,
+  });
+}
