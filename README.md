@@ -50,36 +50,70 @@ wmanager export
 
 ## **Configuration (conf.yml)**
 
-All behavior is driven by a single conf.yml. Below is a minimal example; adapt it to your toolchain.
+All behavior is driven by a single conf.yml (schema version 1). Below is a minimal example; adapt it to your toolchain.
 
 ```other
-template_files:
-  resume:
-    name: "CV.typ"
-    path: "/Users/johnDoe/work_manager/templates/"
-    output_name: "CV_${wname}.typ"
-    export_name: "CV_${wname}.pdf"
-    export_command: "typst compile ${self.path}/${self.output_name}"
-    open_command: "open ${self.path}/${self.output_name}"
+version: 1
+default_preset:
+  template_files:
+    resume:
+      name: "CV.typ"
+      path: "/Users/johnDoe/work_manager/templates/"
+      output_name: "CV_${wname}.typ"
+      export_name: "CV_${wname}.pdf"
+      export_command: "typst compile ${self.path}/${self.output_name}"
+      open_command: "open ${self.path}/${self.output_name}"
 
-  cover_letter:
-    name: "letter.md"
-    path: "/Users/johnDoe/work_manager/templates/"
-    output_name: "Letter_${wname}.md"
-    export_name: "Letter_${wname}.pdf"
-    export_command: "pandoc ${self.path}/${self.output_name} -o ${self.path}/${self.export_name}"
-    open_command: "code ${self.path}/${self.output_name}"
+    cover_letter:
+      name: "letter.md"
+      path: "/Users/johnDoe/work_manager/templates/"
+      output_name: "Letter_${wname}.md"
+      export_name: "Letter_${wname}.pdf"
+      export_command: "pandoc ${self.path}/${self.output_name} -o ${self.path}/${self.export_name}"
+      open_command: "code ${self.path}/${self.output_name}"
 
-  logo:
-    name: "company_logo.png"
-    path: "/Users/johnDoe/work_manager/templates/"
-    is_asset: true
+    logo:
+      name: "company_logo.png"
+      path: "/Users/johnDoe/work_manager/templates/"
+      is_asset: true
+
+presets:
+  student_job:
+    path: "/Users/johnDoe/work_manager/presets/student_job/"
 
 paths:
   applications_path: "/Users/johnDoe/work_manager/applications/"
   export_path: "/Users/johnDoe/work_manager/jobExport/"
 ```
 
+A conf.yml written before presets existed (no `version` key) is auto-migrated the first time it's loaded - see `wmanager migrate`.
+
+### **Presets**
+
+A preset is an alternate set of templates for a different kind of application (student job, technical internship, full-time role, etc). Each entry under `presets` points to a folder containing that preset's own `template.yml`:
+
+```other
+# /Users/johnDoe/work_manager/presets/student_job/template.yml
+template_files:
+  resume:
+    name: "CV_student.typ"
+    output_name: "CV_${wname}.typ"
+    export_name: "CV_${wname}.pdf"
+    export_command: "typst compile ${self.path}/${self.output_name}"
+    open_command: "open ${self.path}/${self.output_name}"
+```
+
+A preset's own template files live alongside its `template.yml`, which is why entries there have no `path` (unlike `default_preset`, whose templates each carry an absolute `path`). Manage presets with:
+
+```other
+wmanager preset list
+wmanager preset add student_job "/Users/johnDoe/work_manager/presets/student_job" --from default
+wmanager preset remove student_job
+```
+
+`--from default` copies each of `default_preset`'s template files into the new preset folder and strips their `path` field automatically. `--from <existing_preset>` copies that preset's folder wholesale instead. Without `--from`, an empty preset skeleton is created for you to fill in by hand.
+
+To use a preset when creating an application: `wmanager create "Acme Inc" --preset student_job`. Omit `--preset` (or pass `--preset default`) to use the default preset.
 
 ### **Key concepts**
 
@@ -95,9 +129,9 @@ paths:
 
 ## **Commands & behavior**
 
-- `wmanager create "Application Name"`
+- `wmanager create "Application Name" [--preset <name>]`
 
-  Creates a sanitized application folder under applications_path, copies templates & assets with their configured output_name, and loads this application.
+  Creates a sanitized application folder under applications_path, copies templates & assets with their configured output_name, and loads this application. Uses the default preset unless `--preset <name>` is given.
 
 - `wmanager load`
 
@@ -201,6 +235,46 @@ export_command: "libreoffice --headless --convert-to pdf --outdir ${self.path} $
 - If exports don’t appear in export_path, check the export_name and whether the export command actually produces that filename.
 - Use is_asset: true for logos, images, or reference configs that you don’t want in your exported package.
 - When in doubt, simplify the command and ensure variable substitutions (like ${self.path}) resolve to correct absolute locations.
+
+----
+
+## **MCP Server**
+
+`work_manager` ships a companion [Model Context Protocol](https://modelcontextprotocol.io) server (`work_manager_mcp`, built with the official [dart_mcp](https://pub.dev/packages/dart_mcp) SDK) so AI agents can drive the same create / open / export / preset workflow through structured tool calls instead of shelling out to the CLI and parsing text. It talks stdio, imports `package:work_manager` directly as a library, and resolves *where things live* rather than reading or writing template file contents itself - an agent uses its own file tools against the paths it returns.
+
+### Running it
+
+Like `work_manager` itself, `work_manager_mcp` resolves `conf.yml`/`metadata.json` relative to its own executable's location, so **the binary must sit in the same folder as your `conf.yml`** (typically `~/work_manager/`).
+
+Declare it in your MCP client's config, e.g. for Claude Code / Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "work_manager": {
+      "command": "/Users/johnDoe/work_manager/work_manager_mcp"
+    }
+  }
+}
+```
+
+### Tools
+
+| Tool | Purpose |
+| --- | --- |
+| `list_presets` | List registered presets (name + path). |
+| `get_preset_info` | Describe a preset's templates (key, file name, asset flag, open/export command presence). Pass `'default'` for the default preset. |
+| `list_applications` | List every known application (id, name, creation date, preset). |
+| `get_current_application` | Get the currently loaded application. |
+| `create_application` | Create (and load) a new application, optionally from a specific preset. |
+| `load_application` | Load an existing application by id. |
+| `resolve_template_path` | Get the on-disk path of a template file for an application, to read/write with your own file tools. |
+| `open_template` | Run a template's `open_command`. |
+| `export_application` | Run every non-asset template's `export_command` and copy results to the export folder. |
+| `add_preset` | Register a new preset, optionally copied from `'default'` or an existing preset. |
+| `remove_preset` | Unregister a preset and delete its folder (irreversible). |
+
+It also exposes a `workmanager://config-schema` resource documenting the `conf.yml` structure and the `${wname}` / `${self.<field>}` / `${<templateKey>.<field>}` variable system, so an agent that has never seen a work_manager config before can learn the model without it being explained in the prompt.
 
 ----
 

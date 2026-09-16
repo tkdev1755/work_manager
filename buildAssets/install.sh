@@ -13,6 +13,9 @@ fi
 
 # Copies the files
 cp "$APP_NAME" "$INSTALL_DIR/"
+if [ -f "${APP_NAME}_mcp" ]; then
+  cp "${APP_NAME}_mcp" "$INSTALL_DIR/"
+fi
 
 # Detects the configuration file of the shell
 if [[ -f "$HOME/.zshrc" ]]; then

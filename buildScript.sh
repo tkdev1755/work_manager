@@ -4,14 +4,18 @@ OS=$2
 ARCH=$3
 # Nom de l'archive de sortie
 dart compile exe bin/work_manager.dart
+dart compile exe bin/work_manager_mcp.dart
 if ! [[ "$OS" = "windows" ]]; then
   cp bin/work_manager.exe bin/work_manager
+  cp bin/work_manager_mcp.exe bin/work_manager_mcp
 fi
 
 mkdir -p releases/"$VERSION"/"${OS}_$ARCH"/
 # shellcheck disable=SC2086
 
 cp bin/work_manager releases/$VERSION/"${OS}_$ARCH"/
+# shellcheck disable=SC2086
+cp bin/work_manager_mcp releases/$VERSION/"${OS}_$ARCH"/
 # shellcheck disable=SC2086
 cp buildAssets/install.sh releases/$VERSION/"${OS}_$ARCH"/
 OUTPUT="workManager_${OS}_${ARCH}.zip"
