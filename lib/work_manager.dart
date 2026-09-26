@@ -657,9 +657,15 @@ int loadApplicationView(Map<String,dynamic> metadata, MapEntry<String,dynamic>? 
     else{
       switch (resultKey.char){
         case "r":
-          print("Deleting application");
-          int statusCode =  deleteApplication(applicationsValues[selectedIndex].key,getApplicationsPath(config),metadata);
-          return statusCode;
+          print("Are you sure to delete this application ? (y/n)");
+          Key deleteResultKey  = console.readKey();
+          if (deleteResultKey.char == "Y" || deleteResultKey.char == "y" ){
+            int statusCode =  deleteApplication(applicationsValues[selectedIndex].key,getApplicationsPath(config),metadata);
+            return statusCode;
+          }
+          else {
+
+          }
         default:
           break;
       }
