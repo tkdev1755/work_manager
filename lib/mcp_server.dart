@@ -27,7 +27,7 @@ base class WorkManagerMCPServer extends MCPServer with ToolsSupport, ResourcesSu
       : confFile = wm.loadConfFile(),
         metadataFile = wm.loadMetdataFile(),
         super.fromStreamChannel(
-          implementation: Implementation(name: 'work_manager', version: '1.2.0'),
+          implementation: Implementation(name: 'work_manager', version: '2.0.0'),
           instructions:
               'Tools to drive work_manager, a job-application manager driven by '
               "conf.yml (templates, presets, paths). This server resolves *where* "

@@ -3,3 +3,10 @@
 .dart_tool/
 .idea
 .DS_Store
+
+# Build outputs (produced by buildScript.sh / dart compile exe)
+bin/work_manager
+bin/work_manager.exe
+bin/work_manager_mcp
+bin/work_manager_mcp.exe
+releases/
